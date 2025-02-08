@@ -9,7 +9,7 @@ The virtual file system will allow you to easily share even one single file.
 http://rejetto.com/hfs/
 
 ## Dev notes
-Initially developed in 2002 with Delphi 6, now with Delphi 10.3.3 (Community Edition).
+Initially developed in 2002 with Delphi 6, now with Lazarus 4.0.
 Icons are generated at http://fontello.com/ . Use fontello.json for further modifications.
 
 For the default template we are targeting compatibility with Chrome 49 as it's the latest version running on Windows XP.
@@ -23,6 +23,9 @@ Now it can be build with full unicode support and in X64.
 <img src="https://rnq.ru/forum/attachment/1977" alt="Unicode">
 
 ## Libs used
-- [ICS v8.64](http://www.overbyte.be) by François PIETTE 
+- [ICS for Lazarus](https://github.com/drapid/ICS_Lazarus) v9 by François PIETTE
 - [For.RnQ](https://github.com/drapid/rnq/tree/master/for.RnQ)
 - [Synopse mORMot2](https://github.com/synopse/mORMot2)
+
+## Components for Lazarus:
+- RichMemo
