@@ -1,0 +1,11 @@
+﻿Initially developed with Delphi 6, now with Lazarus 4.0
+
+Icons are generated at http://fontello.com/ . Use fontello.json for further modifications.
+
+=== LIBS USED
+ICS for Lazarus v8.63 by François PIETTE https://github.com/drapid/ICS_Lazarus
+for.rnq https://github.com/drapid/rnq/tree/master/for.RnQ
+
+Components for Lazarus:
+RichMemo
+
