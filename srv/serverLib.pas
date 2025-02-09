@@ -313,6 +313,7 @@ var
   function isBanned(const address: String; out comment: String): Boolean; overload;
   function isBanned(cd: TconnDataMain): Boolean; overload;
   procedure removeFilesFromComments(files: TStringDynArray; lp: TLoadPrefs);
+  function protoColon(fs: TFileServer): String;
   function getLibs: String;
 
 implementation
@@ -1601,6 +1602,7 @@ begin
 
   diffTpl := Ttpl.create();
   folder.lock();
+  antiDos := NIL;
 try
   buildTime := now();
   cd.conn.setHeaderIfNone('Cache-Control', RawByteString('no-cache, no-store, must-revalidate, max-age=-1'));
@@ -1988,7 +1990,6 @@ end;
 
 procedure TFileServer.ForAllSubNodes(Sender: TObject; proc: TProc<TObject>);
 var
-  s: RawByteString;
   n: TFileNode;
   i: Integer;
   ff: Tfile;
@@ -2288,7 +2289,6 @@ procedure TFileServer.setVFSJZ(const vfs: RawByteString; node: TFileNode=NIL; on
     fj: TJSONValue;
     v: TJSONValue;
     v2: TJSONValue;
-    dc: Integer;
     cnt: Integer;
   begin
     i := 0;
@@ -4627,9 +4627,9 @@ var
   // start-profiler
       if (spDMbrowserTpl in sp) and isDownloadManagerBrowser() then
         s := getAFolderPage(f, data, dmBrowserTpl)
-      else if (spDisableMacros in sp) and (not Assigned(Self.tpl) or (Self.tpl.fullText = '') or Self.tpl.anyMacroMarkerIn) then
+      else if (spDisableMacros in sp) and (not Assigned(Self.tpl) or (Self.tpl.fullText = '') or Self.tpl.anyMacroMarkerIn)and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
         s := getAFolderPage(f, data, noMacrosTpl)
-      else if (spNonLocalIPDisableMacros in sp) and not data.isLocalAddress then
+      else if (spNonLocalIPDisableMacros in sp) and not data.isLocalAddress and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
         s := getAFolderPage(f, data, noMacrosTpl)
       else
         s := getAFolderPage(f, data, Self.tpl);
@@ -5387,6 +5387,13 @@ begin
     ss.free
   end;
 end; // removeFilesFromComments
+
+function protoColon(fs: TFileServer): String;
+const
+  LUT: array [boolean] of string = ('http://','https://');
+begin
+  result := LUT[spHttpsUrls in fs.SP];
+end; // protoColon
 
 function getLibs: String;
 begin

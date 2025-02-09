@@ -451,7 +451,7 @@ begin
       src := StringReplace(src, k, v, [rfReplaceAll,rfIgnoreCase]);
       inc(i);
      end;
-    end;
+   end;
   {$ENDIF USE_MORMOT_COLLECTIONS}
   result := src;
 end; // xtpl

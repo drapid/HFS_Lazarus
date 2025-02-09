@@ -739,7 +739,6 @@ procedure repaintTray(fs: TFileServer);
 function  paramsAsArray(): TStringDynArray;
 procedure processParams_before(var params: TStringDynArray; const allowed: String='');
 function  loadCfg(var ini, tpl: String): Boolean;
-function  protoColon(): String;
 procedure setSpeedLimitIP(v: real);
 function  deleteAccount(const name: String): Boolean;
 function  createFingerprint(const fn: String; showProgress: Boolean = True): String;
@@ -1364,13 +1363,6 @@ if assigned(mainFrm) then
   mainfrm.visible:=userInteraction.bakVisible;
 end; // reenableUserInteraction
 
-function protoColon(): String;
-const
-  LUT: array [boolean] of string = ('http://','https://');
-begin
-  result := LUT[mainFrm.httpsUrlsChk.checked];
-end; // protoColon
-
 function banAddress(fs: TFileServer; ip: String): Boolean;
 var
   comm: string;
@@ -1912,20 +1904,6 @@ begin
   if assigned(fs) then
     mainfrm.portBtn.Caption := format(S_PORT_LABEL, [first(fs.getListenPorts(), S_PORT_ANY)]);
 end; // updatePortBtn
-
-procedure runTplImport(fs: TFileServer);
-var
-  f, fld: Tfile;
-begin
-  f := Tfile.create(fs, tplFilename);
-  fld := Tfile.create(fs, extractFilePath(tplFilename));
-  try
-    runScript(fs, fs.tpl['special:import'], NIL, fs.tpl, f, fld);
-   finally
-    freeAndNIL(f);
-    freeAndNIL(fld);
-  end;
-end; // runTplImport
 
 // returns true if template was patched
 function setTplText(fs: TFileServer; text: UnicodeString=''): Boolean;

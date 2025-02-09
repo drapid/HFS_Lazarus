@@ -37,6 +37,7 @@ function runScript(fs: TFileServer; const script: UnicodeString; table: TUnicode
 function runEventScript(fs: TFileServer; const event: String; table: TUnicodeStringDynArray=NIL; cd: TconnDataMain=NIL): String;
 procedure resetLog();
 procedure runTimedEvents(fs: TFileServer);
+procedure runTplImport(fs: TFileServer);
 
 implementation
 
@@ -2449,7 +2450,7 @@ begin
           else if p = 'is new' then trueIf(md.f.isNew())
           else if p = 'agent' then result:=md.cd.agent
           else if p = 'tpl file' then result:=tplFilename
-          else if p = 'protocolon' then result:=protoColon()
+          else if p = 'protocolon' then result := protoColon(fs)
           else if p = 'speed limit' then result:=intToStr(round(speedLimit))
           else if p = 'external address' then
             begin
@@ -2969,6 +2970,21 @@ begin
       end; // ignore exceptions
     end;
 end; // runTimedEvents
+
+procedure runTplImport(fs: TFileServer);
+var
+  f, fld: Tfile;
+begin
+  f := Tfile.create(fs, tplFilename);
+  fld := Tfile.create(fs, extractFilePath(tplFilename));
+  try
+    runScript(fs, fs.tpl['special:import'], NIL, fs.tpl, f, fld);
+   finally
+    freeAndNIL(f);
+    freeAndNIL(fld);
+  end;
+end; // runTplImport
+
 
 initialization
   cachedTpls:=TcachedTpls.create();

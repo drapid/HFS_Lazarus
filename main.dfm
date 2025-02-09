@@ -13,7 +13,6 @@ object mainFrm: TmainFrm
   Font.Height = -11
   Font.Name = 'Tahoma'
   KeyPreview = True
-  LCLVersion = '4.0.0.1'
   OnClose = FormClose
   OnCloseQuery = FormCloseQuery
   OnCreate = FormCreate
@@ -86,7 +85,7 @@ object mainFrm: TmainFrm
     end
     object ToolButton4: TToolButton
       Left = 157
-      Height = 8
+      Height = 22
       Top = 2
       Caption = 'ToolButton4'
       ImageIndex = 15
@@ -94,7 +93,7 @@ object mainFrm: TmainFrm
     end
     object ToolButton2: TToolButton
       Left = 165
-      Height = 8
+      Height = 22
       Top = 2
       Caption = 'ToolButton2'
       ImageIndex = 16
@@ -112,7 +111,7 @@ object mainFrm: TmainFrm
     end
     object SepTB1: TToolButton
       Left = 70
-      Height = 8
+      Height = 22
       Top = 2
       Caption = 'SepTB1'
       ImageIndex = 13
@@ -1007,6 +1006,7 @@ object mainFrm: TmainFrm
         OnClick = enableMacrosChkClick
       end
       object disableMacrosNonLocalIPChk: TMenuItem
+        AutoCheck = True
         Caption = 'Disable macros for non-local IP'
         Checked = True
       end

@@ -61,7 +61,6 @@ type
     const MAX_CONCURRENTS = 3;
   class var
     folderConcurrents: integer;
-  class var
     ip2availability2: Tip2av;
     class constructor Create;
   protected
@@ -106,7 +105,7 @@ type
     function empty():boolean;
     end;
 
-  Thasher = class(TstringList)
+  Thasher = class(TStringList)
     procedure loadFrom(path: String);
     function getHashFor(fn: String): String;
     end;

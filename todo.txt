@@ -1,5 +1,16 @@
++ show zip content in subframe by toggling some button
++ zip format for folder archives
 - update doesn't work without 'only 1 instance' (it's the -q)
-+ replace shellExtDlg.gif with transparent png (english system)
+DONE + replace shellExtDlg.gif with transparent png (english system)
+DONE * save custom icons in VFS only once
+DONE + next VFS file format version should be text (yaml or json)
++ thumbnails mode (create thumbnails on addition)
++ multi-language
+? support mp3ToIon www.rejetto.com/forum/?topic=4600
++ support POSTed files www.rejetto.com/forum/?topic=6618
++ support PUT http method
+? integration with mediainfo.dll www.rejetto.com/forum/?topic=7329
++ a way to add via cmdline a file specifying its virtual name/path
 + self-test supporting https
 + expiring links
 * dismiss regexp lib http://docwiki.embarcadero.com/Libraries/Rio/en/System.RegularExpressions.TRegEx
@@ -49,7 +60,6 @@ document: new event [login]
 - android doesn't upload http://www.rejetto.com/forum/index.php/topic,9699.0/topicseen.html#msg1054287
 - android doesn't work with passwords http://www.rejetto.com/forum/index.php/topic,9575.msg1054029.html#msg1054029
 ? default tpl: consider css data uri http://www.nczonline.net/blog/2010/07/06/data-uris-make-css-sprites-obsolete/
-+ next VFS file format version should be text (yaml or json)
 + remove the "progress" from "log what", and use [progress|no log] instead
 + folder archive depth limit http://www.rejetto.com/forum/index.php/topic,8546.msg1050027.html#msg1050027
 ? in getPage() many %symbols% are translated in a way incompatible with {.section.}
@@ -61,13 +71,11 @@ document: new event [login]
 + plugins system http://www.rejetto.com/wiki/index.php/HFS:_plugins_design
 ? tpl as plugin category
 ? try merging 2 implementations of runEventScript()
-+ support PUT http method
 ? use the system index for faster searching http://msdn.microsoft.com/en-us/library/bb266517(VS.85).aspx http://www.rejetto.com/forum/index.php/topic,7700.msg1047024.html#msg1047024
 - out of memory / GDI http://www.rejetto.com/forum/index.php/topic,7703.msg1047118.html#msg1047118
 ? consider using tpl.appendString() in getFolderPage() instead of getRecursiveDiffTplAsStr() to avoid some string concatenations
 ? fake the by-default "anyone" in permission/download, to reflect the behavior www.rejetto.com/forum/?topic=7301
 + log event to filter www.rejetto.com/forum/?topic=7332.0
-? integration with mediainfo.dll www.rejetto.com/forum/?topic=7329
 + folder archive log, just as for deletion http://www.rejetto.com/forum/index.php?topic=6904.msg1042974;topicseen#msg1042974
 - AV with RealVNC on hints by mouse hovering www.rejetto.com/forum/?topic=5261
 - N-Stalker can locally crash HFS
@@ -87,7 +95,6 @@ document: new event [login]
 + authentication digest
 + improve the connections box http://www.rejetto.com/forum/index.php?topic=6689.msg1041182#msg1041182
 + ban page can't eventually access template files www.rejetto.com/forum/?topic=6628
-+ support POSTed files www.rejetto.com/forum/?topic=6618
 + clicking on a group, user should get notified of what accounts are part of it
 + multi-span folder archive www.rejetto.com/forum/?topic=6575
 + an updated hint on virtual folders, to explain how to get upload working
@@ -118,7 +125,6 @@ document: new event [login]
 + show update news inside HFS
 + a way to filter/show only "new" files www.rejetto.com/forum/?topic=5227
 ? add to the LOG the X-REQUEST To to be able to know whom the  proxy is forwarding to
-+ a way to add via cmdline a file specifying its virtual name/path
 ? "sticky file" with an hint on adding a leading blank space www.rejetto.com/forum/?topic=5088
 + upload file overwriting per-folder www.rejetto.com/forum/?topic=5086
 + https
@@ -132,7 +138,6 @@ document: new event [login]
 + edit comments for real folders www.rejetto.com/forum/?topic=4667
 + a way to pass ini commands through the command line
 + create folders via command line www.rejetto.com/forum/?topic=3955
-? support mp3ToIon www.rejetto.com/forum/?topic=4600
 + download only for <account-list>
 + account: see all transfers in ~progress http://www.rejetto.com/forum/index.php/topic,9325.msg1053416/topicseen.html#msg1053416
 + limit account to a host mask
@@ -161,7 +166,6 @@ document: new event [login]
 + search for files including meta information (id3 tag) www.rejetto.com/forum/?topic=5312
 + multiupload using flash
 ? support shortcut to folders in real-folders
-* save custom icons in VFS only once
 + DNS reverse for ips www.rejetto.com/forum/?topic=4970
 + UPnP (www.upnpworks.alcidelic.com/links.html) (www.whitebear.ch) (http://miniupnp.free.fr/) (http://miniupnp.free.fr/files/xchat-upnp20061022.patch)
 + UPnP Media Server www.rejetto.com/forum/?topic=5538
@@ -176,12 +180,9 @@ document: new event [login]
 + limit bandwidth/downloads/kb by user, by ip
 + external text files with list of authorized IP addresses/accounts
 + periodic password changer? (t=1061)
-+ thumbnails mode (create thumbnails on addition)
 ? socks5
 + SSI
 + support file renaming notification
-+ multi-language
-+ zip format for folder archives
 * stop using /~commands and move all of them in the standard ?name=value form
 
 VER 3

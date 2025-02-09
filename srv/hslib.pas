@@ -927,6 +927,12 @@ begin
     end;
   if assigned(srv) and assigned(srv.offlines) then
     srv.offlines.remove(self);
+
+  srv.q.remove(Self);
+  srv.conns.remove(Self);
+  srv.offlines.Remove(Self);
+  srv.disconnecting.Remove(Self);
+
   srv.notify(HE_DESTROID, Self);
 
   freeAndNIL(httpRequest.headers);
