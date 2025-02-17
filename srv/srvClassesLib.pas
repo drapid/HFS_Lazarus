@@ -24,25 +24,12 @@ unit srvClassesLib;
 interface
 
 uses
- {$IFDEF FMX}
-  System.UITypes, FMX.Types,
-  FMX.Graphics,
- {$ELSE ~FMX}
   windows,
   Forms,
   Graphics,
- {$ENDIF FMX}
   Contnrs,
   iniFiles, types, strUtils, sysUtils, classes,
- {$IFDEF FMX}
-  FMX.TreeView,
- {$ELSE ~FMX}
- {$IFDEF USE_VTV}
-  VirtualTrees.Types, VirtualTrees.DrawTree,
- {$ELSE ~USE_VTV}
   ComCtrls,
- {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   Generics.Collections,
   {$ELSE USE_MORMOT_COLLECTIONS}
@@ -387,18 +374,8 @@ type
     function  getFileName(): String;
   end;
 
- {$IFDEF FMX}
-  TFileTree = TTreeView;
-  TFileNode = TTreeViewItem;
- {$ELSE ~FMX}
- {$IFDEF USE_VTV}
-  TFileTree = TVirtualDrawTree;
-  TFileNode = PVirtualNode;
- {$ELSE ~USE_VTV}
   TFileTree = TTreeView;
   TFileNode = TTreeNode;
- {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
   TFileNodeDynArray = array of TFileNode;
 
   TFileEvent = procedure(f: TObject);
@@ -422,12 +399,14 @@ type
 //    property MainTree: TFileTree read getMainTree;
   end;
 
- {$IFDEF FMX}
-  TAdd2LogEvent = procedure(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= TAlphaColorRec.Null; doSync: Boolean = True);
- {$ELSE ~FMX}
-  TAdd2LogEvent = procedure(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = True);
- {$ENDIF FMX}
+  {$IFNDEF USE_MORMOT_COLLECTIONS}
+  TMacroTableVal = TDictionary<String, UnicodeString>;
+  TMacroTableValPair = TPair<String, UnicodeString>;
+  {$ELSE USE_MORMOT_COLLECTIONS}
+  TMacroTableVal = IKeyValue<String, UnicodeString>;
+  {$ENDIF USE_MORMOT_COLLECTIONS}
 
+  TAdd2LogEvent = procedure(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = True);
 
 
   function conn2dataMain(p: Tobject): TconnDataMain; inline; overload;
@@ -437,6 +416,7 @@ type
   function countConnectionsByIP(const ip: String): Integer;
   function getGraphPic(cd: TconnDataMain; w, h: Integer): RawByteString;
   function objByIP(const ip: String): TperIp;
+  function newMacroTableVal: TMacroTableVal;
 
 
 implementation
@@ -448,11 +428,7 @@ uses
   ansiStrings,
   {$ENDIF ~FPC}
   RDFileUtil, RDUtils,
-  {$IFDEF FMX}
-  IconsFMXLib,
-  {$ELSE ~FMX}
   IconsLib,
-  {$ENDIF FMX}
   HSUtils,
   parserLib,
   srvUtils, srvVars;
@@ -1952,7 +1928,7 @@ begin
         bmp.height := min(i, 300000 div max(1,bmp.width));
       refresh := chop('x',options);
       for i:=1 to 5 do
-        addColor(stringToColorEx(chop('x',options){$IFNDEF FMX}, graphics.clDefault{$ENDIF ~FMX}));
+        addColor(stringToColorEx(chop('x',options), graphics.clDefault));
      except
     end;
   drawGraphOn(bmp.canvas, colors);
@@ -1964,6 +1940,15 @@ begin
   if refresh > '' then
     cd.conn.addHeader('Refresh', refresh);
 end; // getGraphPic
+
+function newMacroTableVal: TMacroTableVal;
+begin
+ {$IFNDEF USE_MORMOT_COLLECTIONS}
+  Result := TMacroTableVal.Create;
+ {$ELSE USE_MORMOT_COLLECTIONS}
+  Result := Collections.NewKeyValue<String, UnicodeString>;
+ {$ENDIF USE_MORMOT_COLLECTIONS}
+end;
 
 
 

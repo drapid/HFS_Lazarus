@@ -76,11 +76,7 @@ uses
 //  FMX.Graphics, System.UITypes, FMX.Types,
   ICS.FMX.OverbyteIcsWSocket,
  {$ELSE ~FMX}
- {$IFDEF FPC}
-  WSocket,
- {$ELSE ~FPC}
   OverbyteIcsWSocket,
- {$ENDIF FPC}
  {$ENDIF FMX}
   RDUtils,
   srvConst;
@@ -112,8 +108,10 @@ var
 begin
   if ip = '::1' then
     exit(TRUE);
+  if ip = '' then
+    exit(False);
  {$IFDEF FPC}
-  dword(r) := WSocket_ntohl(WSocket_inet_addr(@ip));
+  dword(r) := WSocket_ntohl(WSocket_inet_addr(@ip[1]));
  {$ELSE FPC}
   dword(r) := dword(WSocket_ntohl(WSocket_inet_addr(ansiString(ip))));
  {$ENDIF FPC}

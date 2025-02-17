@@ -32,31 +32,15 @@ unit HSlib;
 interface
 
 uses
-  classes, messages,
+  classes, messages, sysutils, strUtils, inifiles, types,
+  winsock,
  {$IFNDEF FPC}
   winprocs,
- {$ENDIF ~FPC}
   mormot.core.base,
- {$IFDEF FMX}
-  FMX.Graphics, System.UITypes, FMX.Types,
-{$IFDEF USE_SSL}
-  ICS.FMX.OverbyteIcsSslBase,
-{$ENDIF USE_SSL}
-  ICS.FMX.OverbyteIcsWSocket,
-  ICS.FMX.OverbyteIcsWSocketS,
- {$ELSE ~FMX}
-  Graphics,
-  Forms,
-  extctrls,
- {$IFDEF FPC}
-  WSocket,
- {$ELSE ~FPC}
+ {$ENDIF ~FPC}
+  Forms, extctrls,
   OverbyteIcsWSocket,
- {$ENDIF FPC}
- {$ENDIF FMX}
-  OverbyteIcsTypes,
-  sysutils,
-  contnrs, strUtils, winsock, inifiles, types
+  contnrs
   ;
 
 const
@@ -194,7 +178,7 @@ type
 
   ThttpConn = class
   protected
-    srv: ThttpSrv;          // reference to the server
+    P_srv: ThttpSrv;        // reference to the server
     stream: Tstream;
     P_address: string;
     P_port: string;
@@ -301,7 +285,7 @@ type
     property getLockCount: integer read lockCount;
     property icsBufSize: integer read getICSBufSize write setICSBufSize;
     property sndBuf: integer read P_sndBuf write setSndBuf;
-    property hsrv: ThttpSrv read srv;
+    property hsrv: ThttpSrv read P_srv;
     property isDisconnected: Boolean read getIsDisconnected;
     property isSendingStream: Boolean read getIsSendingStream;
    end;
@@ -374,6 +358,7 @@ uses
   AnsiStrings,
 //  AnsiClasses,
 {$ENDIF UNICODE}
+  OverbyteIcsTypes,
   math,
   RDUtils, Base64,
   HSUtils,
@@ -593,7 +578,7 @@ begin notify(HE_CLOSE, NIL) end;
 
 constructor ThttpSrv.create();
 begin
-//sock:=TWSocketServer.create(NIL);
+//sock := TWSocketServer.create(NIL);
   sock := TWSocket.create(NIL);
   sock.OnSessionAvailable := connected;
   sock.OnSessionClosed := disconnected;
@@ -880,7 +865,7 @@ begin
   sock.onDataSent := datasent;
   sock.LineMode := FALSE;
 
-  srv := server;
+  P_srv := server;
 
   httpRequest.headers := ThashedStringList.create;
   httpRequest.headers.nameValueSeparator := ':';
@@ -894,7 +879,7 @@ begin
   P_v6 := false;
  {$ENDIF USE_IPv6}
   httpState := HCS_IDLE;
-  srv.conns.add(self);
+  P_srv.conns.add(self);
   clearRequest();
   clearReply();
   QueryPerformanceCounter(lastSpeedTime);
@@ -925,15 +910,15 @@ begin
       sock.WaitForClose();
      except
     end;
-  if assigned(srv) and assigned(srv.offlines) then
-    srv.offlines.remove(self);
+  if assigned(P_srv) and assigned(P_srv.offlines) then
+    P_srv.offlines.remove(self);
 
-  srv.q.remove(Self);
-  srv.conns.remove(Self);
-  srv.offlines.Remove(Self);
-  srv.disconnecting.Remove(Self);
+  P_srv.q.remove(Self);
+  P_srv.conns.remove(Self);
+  P_srv.offlines.Remove(Self);
+  P_srv.disconnecting.Remove(Self);
 
-  srv.notify(HE_DESTROID, Self);
+  P_srv.notify(HE_DESTROID, Self);
 
   freeAndNIL(httpRequest.headers);
   freeAndNIL(httpRequest.cookies);
@@ -967,7 +952,7 @@ end; // calculateSpeed
 procedure ThttpConn.disconnected(Sender: TObject; Error: Word);
 begin
   httpState := HCS_DISCONNECTED;
-  srv.disconnecting.Add(self);
+  P_srv.disconnecting.Add(self);
 end;
 
 function ThttpConn.getHeader(const h: String): String;
@@ -1116,7 +1101,7 @@ procedure ThttpConn.processInputBuffer();
       end;
 
     h := getHeader('Connection');
-    persistent := srv.persistentConnections and
+    persistent := P_srv.persistentConnections and
       (ansiStartsText('Keep-Alive', h) or (httpRequest.ver >= '1.1') and (ipos('close', h)=0));
 
     h := getHeader('Content-Type');
@@ -1385,7 +1370,7 @@ begin
   s := sock.ReceiveStrA();
  {$ENDIF FPC}
   inc(brecvd, length(s));
-  inc(srv.brecvd, length(s));
+  inc(P_srv.brecvd, length(s));
   if (s = '') or dontFulFil then
     exit;
   if httpState = HCS_POSTING then
@@ -1410,7 +1395,7 @@ begin
   if bytes <= 0 then
     exit;
   inc(bsent, bytes);
-  inc(srv.bsent, bytes);
+  inc(P_srv.bsent, bytes);
   if httpState = HCS_REPLYING_BODY then
     begin
       inc(bsent_body, bytes);
@@ -1456,7 +1441,7 @@ begin
   if (httpState = HCS_REPLYING_BODY) and (bytesToSend > 0) then
     begin
       if toBeQueued() then
-        srv.q.add(self)
+        P_srv.q.add(self)
        else
         sendNextChunk();
       exit;
@@ -1625,10 +1610,10 @@ function ThttpConn.getbytesGot():int64;
 begin result:=length(buffer) end;
 
 procedure ThttpConn.notify(ev:ThttpEvent);
-begin srv.notify(ev, self) end;
+begin P_srv.notify(ev, self) end;
 
 procedure ThttpConn.tryNotify(ev:ThttpEvent);
-begin try srv.notify(ev, self) except end end;
+begin try P_srv.notify(ev, self) except end end;
 
 procedure ThttpConn.sendheader(const h: string);
 begin

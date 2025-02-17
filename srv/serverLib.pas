@@ -10,17 +10,9 @@ uses
   mormot.core.base,
   Classes,
   //Messages,
- {$IFDEF FMX}
-  FMX.Forms,
-  FMX.Controls,
-  FMX.Graphics, System.UITypes,
-  FMX.TreeView,
-  FMX.Dialogs,
- {$ELSE ~FMX}
   Graphics,
   Forms,
   ComCtrls,
- {$ENDIF FMX}
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   Generics.Collections,
   {$ELSE USE_MORMOT_COLLECTIONS}
@@ -74,12 +66,6 @@ type
   TOnGetLP = function: TLoadPrefs of Object;
   TOnGetLogP = function: TLogPrefs of Object;
 
-  {$IFNDEF USE_MORMOT_COLLECTIONS}
-  TMacroTableVal = TDictionary<String, UnicodeString>;
-  TMacroTableValPair = TPair<String, UnicodeString>;
-  {$ELSE USE_MORMOT_COLLECTIONS}
-  TMacroTableVal = IKeyValue<String, UnicodeString>;
-  {$ENDIF USE_MORMOT_COLLECTIONS}
 
   PMacroData = ^TmacroData;
   TmacroData = record
@@ -321,10 +307,10 @@ implementation
 uses
   strutils, DateUtils,
   mormot.core.unicode,
+  OverbyteIcsWSocket,
  {$IFDEF FPC}
   mormot.core.datetime,
   fpJSON,
-  WSocket,
  {$ELSE ~FPC}
   //Winapi.WinSock,
   JSON,
@@ -332,7 +318,6 @@ uses
   OverbyteIcsSSLEAY,
  {$ENDIF USE_SSL}
   OverbyteIcsTypes,
-  OverbyteIcsWSocket,
  {$ENDIF FPC}
   mormot.core.json,
   netUtils,
@@ -343,11 +328,7 @@ uses
    ZSTDLib,
  {$ENDIF ZIP_ZSTD}
   RnQzip, RnQLangs, RnQDialogs, RnQJSON,
- {$IFDEF FMX}
-  IconsFMXLib,
- {$ELSE ~FMX}
   IconsLib,
- {$ENDIF FMX}
   HSUtils,
   srvUtils, parserLib, srvVars;
 
@@ -976,6 +957,7 @@ begin
    supportZStd := false;
   {$ENDIF ZIP_ZSTD}
   defaultTpl := Ttpl.create(getResText('defaultTpl'));
+  WebPTryLoad;
 end;
 
 class destructor TFileServer.DestroyServer;
@@ -1078,17 +1060,9 @@ var
 begin
   n := getRootNode;
   if assigned(n) then
- {$IFDEF FMX}
-    n.Free;
- {$ELSE ~FMX}
    begin
-   {$IFDEF USE_VTV}
-     MainTree.DeleteNode(n);
-   {$ELSE ~USE_VTV}
      n.Delete();
-   {$ENDIF ~USE_VTV}
    end;
- {$ENDIF FMX}
 end;
 
 function TFileServer.encodeURLA(const s: String; fullEncode:boolean=FALSE): RawByteString;
@@ -1219,23 +1193,7 @@ begin
       exit; // no support for null filenames
     found := FALSE;
     // search inside the VFS
-   {$IFDEF FMX}
-    if cur.Count > 0 then
-     for var ii in [0..(cur.count-1)] do
-      begin
-        n := cur.Items[ii];
-  //    found:=stringExists(n.text, s) or sameText(n.text, UTF8toAnsi(s));
-  //        found := stringExists(n.text, s) or sameText(n.text, s);
-        found := sameText(n.text, s);
-        if found then
-          break;
-      end;
-   {$ELSE ~FMX}
-    {$IFDEF USE_VTV}
-    n := cur.FirstChild;
-    {$ELSE ~USE_VTV}
     n := cur.getFirstChild();
-    {$ENDIF ~USE_VTV}
     while assigned(n) do
     begin
 //    found := stringExists(n.text, s) or sameText(n.text, UTF8toAnsi(s));
@@ -1243,13 +1201,8 @@ begin
       found := sameText(nodetext(n), s);
     if found then
       break;
-    {$IFDEF USE_VTV}
-    n := n.NextSibling;
-    {$ELSE ~USE_VTV}
     n := n.getNextSibling();
-    {$ENDIF ~USE_VTV}
     end;
-   {$ENDIF FMX}
     if not found then // this piece was not found the virtual way
      begin
       f := TFile(nodeToFile(cur));
@@ -1765,30 +1718,6 @@ begin
     end;
   if parent = NIL then
     exit;
- {$IFDEF FMX}
-  while parent.data.IsObject and not TFile(nodeToFile(parent)).isFolder() do
-    parent := parent.ParentItem;
-  if parent.Count > 0 then
-   for var ii in [0..(parent.count-1)] do
-    begin
-      n := parent.Items[ii];
-      result := sameText(n.text, name);
-      if result then
-        exit;
-    end;
- {$ELSE ~FMX}
-  {$IFDEF USE_VTV}
-  while (parent.GetData <> NIL) and not TFile(nodeToFile(parent)).isFolder() do
-    parent := parent.parent;
-  n := parent.FirstChild;
-  while assigned(n) do
-  begin
-    result := sameText(nodetext(n), name);
-    if result then
-      exit;
-    n := n.NextSibling;
-  end;
-  {$ELSE ~USE_VTV}
   while assigned(parent.data) and not TFile(nodeToFile(parent)).isFolder() do
     parent := parent.parent;
   n := parent.getFirstChild();
@@ -1799,8 +1728,6 @@ begin
       exit;
     n := n.getNextSibling();
   end;
-  {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
 end; // existsNodeWithName
 
 function TFileServer.getUniqueNodeName(const start: string; parent: TFileNode): string;
@@ -1834,15 +1761,8 @@ procedure TFileServer.DoImageChanged(Sender: TObject; n: TFileNode = NIL);
 begin
   if n = NIL then
     n := TFile(Sender).node;
-  {$IFNDEF FMX}
-  if Assigned(n) then
-  {$IFDEF USE_VTV}
-    MainTree.InvalidateNode(n);
-  {$ELSE ~USE_VTV}
   n.Imageindex := TFile(Sender).NodeImageindex;
   n.SelectedIndex := TFile(Sender).NodeImageindex;
-  {$ENDIF ~USE_VTV}
-  {$ENDIF ~FMX}
 end;
 
 procedure TFileServer.ChangedName(Sender: TObject; Name: String);
@@ -1864,25 +1784,10 @@ function TFileServer.findNode(f: TObject): TFileNode;
 var
   n: TFileNode;
 begin
- {$IFDEF FMX}
-  for var i := 0 to mainTree.Count-1 do
-   begin
-    n := mainTree.Items[i];
-    if n.Data.AsObject = f then
-      Exit(n);
-   end;
- {$ELSE ~FMX}
-  {$IFDEF USE_VTV}
-  for var n in mainTree.Nodes() do
-    if n.GetData<Tfile> = f then
-      Exit(n);
-  {$ELSE ~USE_VTV}
   if mainTree.Items.Count > 0 then
     for n in mainTree.Items do
       if n.Data = f then
         Exit(n);
-  {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
   Result := NIL;
 end;
 
@@ -1891,11 +1796,7 @@ var
   n: TFileNode;
 begin
   n := findNode(f);
- {$IFDEF FMX}
-        Result := n.ParentItem;
- {$ELSE ~FMX}
-        Result := n.parent;
- {$ENDIF FMX}
+  Result := n.parent;
 end;
 
 function TFileServer.getFirstChild(f: TObject): TFileNode;
@@ -1904,20 +1805,7 @@ var
 begin
   n := findNode(f);
   if Assigned(n) then
- {$IFDEF FMX}
-        begin
-          if n.Count > 0 then
-            Result := n.Items[0]
-           else
-            Result := NIL;
-        end
- {$ELSE ~FMX}
-   {$IFDEF USE_VTV}
-        Result := n.FirstChild
-   {$ELSE ~USE_VTV}
-        Result := n.getFirstChild
-   {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
+    Result := n.getFirstChild
    else
     Result := NIL
    ;
@@ -1926,31 +1814,11 @@ end;
 function TFileServer.getNextSibling(f: TObject): TFileNode;
 var
   n: TFileNode;
-  {$IFDEF FMX}
-  p, next: TFileNode;
-  i: Integer;
-  {$ENDIF FMX}
 begin
   n := findNode(f);
   if Assigned(n) then
     begin
-  {$IFDEF FMX}
-      p := n.ParentItem;
-      i := n.Index + 1;
-      next := p.ItemByIndex(i);
-      while Assigned(next) and not next.Visible do
-        begin
-          inc(i);
-          next := p.ItemByIndex(i);
-        end;
-      Result := next
-  {$ELSE ~FMX}
-   {$IFDEF USE_VTV}
-      Result := n.NextSibling;
-   {$ELSE ~USE_VTV}
       Result := n.getNextSibling;
-   {$ENDIF ~USE_VTV}
-  {$ENDIF FMX}
     end
     else
       Result := NIL;
@@ -1976,15 +1844,7 @@ begin
   n := findNode(f);
   if Assigned(n) then
     begin
-  {$IFDEF FMX}
-     n.Release;
-  {$ELSE ~FMX}
-   {$IFDEF USE_VTV}
-      MainTree.DeleteNode(n);
-   {$ELSE !USE_VTV}
       n.delete();
-   {$ENDIF !USE_VTV}
-  {$ENDIF FMX}
     end;
 end;
 
@@ -1995,31 +1855,17 @@ var
   ff: Tfile;
 begin
   n := TFile(Sender).node;
- {$IFDEF USE_VTV}
-  if n.ChildCount > 0 then
-   for var nn in fMainTree.ChildNodes(n) do
-    begin
-      ff := TFile(nodetofile(nn));
-      if Assigned(ff) then
-        proc(ff);
-    end;
- {$ELSE ~USE_VTV}
   if n.Count > 0 then
   for i:=0 to n.Count-1 do
     begin
-  {$IFDEF FMX}
-      ff := TFile(nodetofile(n.items[i]));
-  {$ELSE ~FMX}
     {$IFDEF FPC}
       ff := TFile(nodetofile(n.items[i]));
     {$ELSE ~FPC}
       ff := TFile(nodetofile(n.item[i]));
     {$ENDIF FPC}
-  {$ENDIF FMX}
       if Assigned(ff) then
         proc(ff);
     end;
- {$ENDIF ~USE_VTV}
 end;
 
 function TFileServer.nodeToFile(n: TFileNode): TObject;
@@ -2027,33 +1873,14 @@ begin
   if n = NIL then
    result := NIL
   else
-  {$IFDEF FMX}
-   if not n.Data.IsEmpty then
-     result := Tfile(n.data.AsObject)
-    else
-     result := NIL;
-  {$ELSE ~FMX}
-     {$IFDEF USE_VTV}
-        result := n.GetData<TFile>
-     {$ELSE ~USE_VTV}
-        result := n.data
-     {$ENDIF ~USE_VTV}
-  {$ENDIF FMX}
+   result := n.data
 end;
 function TFileServer.nodeText(n: TFileNode): String;
 begin
   if n = NIL then
    result := ''
   else
-  {$IFDEF FMX}
-   result := Tfile(n.data.AsObject).name;
-  {$ELSE ~FMX}
-     {$IFDEF USE_VTV}
-   result := n.GetData<TFile>.name
-     {$ELSE ~USE_VTV}
    result := n.Text
-     {$ENDIF ~USE_VTV}
-  {$ENDIF FMX}
 end;
 
 function TFileServer.nodeIsLocked(n: TFileNode): boolean;
@@ -2767,20 +2594,9 @@ begin
     end;
 }
   // ensure the parent is a folder
- {$IFDEF FMX}
-  while assigned(parent) and parent.data.IsObject
-    and not TFile(nodeToFile(parent)).isFolder() do
-    parent := parent.ParentItem;
- {$ELSE ~FMX}
-  {$IFDEF USE_VTV}
-  while assigned(parent) and (parent.GetData <> NIL)
-    and not TFile(nodeToFile(parent)).isFolder() do
-  {$ELSE ~USE_VTV}
   while assigned(parent) and assigned(parent.data)
     and not TFile(nodeToFile(parent)).isFolder() do
-  {$ENDIF ~USE_VTV}
     parent := parent.parent;
- {$ENDIF FMX}
   // test for duplicate. it often happens when you have a shortcut to a file.
   if existsNodeWithName(f.name, parent) then
     begin
@@ -2791,25 +2607,10 @@ begin
   if stopAddingItems then
     exit;
 
- {$IFDEF FMX}
-  newNode := TTreeViewItem.Create(mainTree);
-  newNode.Text := f.name;
-  newNode.Data := f;
-  newNode.parent := parent;
-
- {$ELSE ~FMX}
-  {$IFDEF USE_VTV}
-  newNode := mainTree.AddChild(parent, f);
-  // stateIndex assignments are a workaround to a delphi bug
-//  newNode.stateIndex := 0;
-//  newNode.stateIndex := -1;
-  {$ELSE ~USE_VTV}
   newNode := mainTree.Items.AddChildObject(parent, f.name, f);
   // stateIndex assignments are a workaround to a delphi bug
   newNode.stateIndex := 0;
   newNode.stateIndex := -1;
-  {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
   f.setupImage(spUseSysIcons in sp, newNode);
   // autocreate fingerprint
   if f.isFile() and (lpFingerPrints in lp) and (autoFingerprint > 0) and (f.resource > '') then
@@ -2872,15 +2673,7 @@ begin
 //      MessageDlg(MSG_ITEM_LOCKED, mtError, []);
       exit;
       end;
- {$IFDEF FMX}
-    node.Free;
- {$ELSE ~FMX}
-   {$IFDEF USE_VTV}
-    mainTree.DeleteNode(node);
-   {$ELSE ~USE_VTV}
     node.Delete();
-   {$ENDIF ~USE_VTV}
- {$ENDIF FMX}
     exit;
     end;
 end;
@@ -3121,7 +2914,10 @@ begin
   lToGZip := lToGZip and (cd.conn.reply.body <> '');
   lToGZip := lToGZip and cd.conn.isAcceptEncoding('gzip');
   if (not lToGZip) and (not lToZstd) and not cd.conn.reply.IsCompressed then
-    Exit;
+    begin
+      cd.conn.reply.comprType := '';
+      Exit;
+    end;
   s := cd.conn.reply.body;
   if s = '' then
     exit;
@@ -3143,6 +2939,17 @@ begin
       if (cd.workaroundForIEutf8  = wi_yes) and (length(s) < BAD_IE_THRESHOLD) then
         lToGZip := false;
     end;
+  if cd.conn.reply.IsCompressed and (cd.conn.reply.comprType <> '')
+     and (((cd.conn.reply.comprType = 'gzip') and lToGZip)
+         or ((cd.conn.reply.comprType = 'zstd') and lToZstd)
+         or ((cd.conn.reply.comprType = 'Br') and lToBr)
+         )
+      then
+    begin
+      cd.conn.addHeader('Content-Encoding', RawByteString(cd.conn.reply.comprType));
+      cd.conn.reply.body := s;
+    end
+   else
   if lToZstd then
     begin
       cd.conn.reply.comprType := 'zstd';
@@ -4860,7 +4667,7 @@ begin
         conn.limiters.add(globalLimiter); // every connection is bound to the globalLimiter
         conn.sndBuf := STARTING_SNDBUF;
         data.address := conn.address;
-        data.isLocalAddress := false; //isLocalIP(conn.address); // False, because we need to check if it's a reverse proxy!
+        data.isLocalAddress := isLocalIP(conn.address) and not addressmatch(forwardedMask, conn.address); // More strictly, because we need to check if it's a reverse proxy!
         checkCurrentAddress();
         doInitConnData(data);
         if (flashOn = 'connection') and (conn.reply.mode <> HRM_CLOSE) then
@@ -5398,7 +5205,7 @@ end; // protoColon
 function getLibs: String;
 begin
   Result := SYNOPSE_FRAMEWORK_NAME + ': ' + SYNOPSE_FRAMEWORK_FULLVERSION;
-  Result := Result + CrLf + WSocket.CopyRight;
+  Result := Result + CrLf + OverbyteIcsWSocket.CopyRight;
 //  Result := Result + CrLf + 'SSL: ' + GSSLEAY_DLL_FileVersion;
   Result := Result + CrLf + RnQzip.ZLibVersion;
   Result := Result + CrLf + RnQzip.ZStdVersion;

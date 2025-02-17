@@ -6,12 +6,10 @@ interface
 
 uses
   Classes, Windows,
- {$IFDEF FPC}
-  httpProt,
- {$ELSE ~FPC}
+  OverbyteIcshttpProt,
+ {$IFNDEF FPC}
   OverbyteIcsUtils,
   OverbyteIcsTypes,
-  OverbyteIcshttpProt,
  {$ENDIF FPC}
   Types,
   srvClassesLib;
@@ -69,19 +67,13 @@ implementation
 uses
   sysutils, StrUtils,
   RDUtils, RDFileUtil, RnQCrypt,
- {$IFDEF FPC}
-  WSocket,
- {$ELSE ~FPC}
   OverbyteIcsWSocket,
+ {$IFNDEF FPC}
  {$IFDEF USE_SSL}
-  {$IFDEF FMX}
-  Ics.fmx.OverbyteIcsSslBase,
-  {$ELSE ~FMX}
-  OverbyteIcsSslBase,
-  {$ENDIF FMX}
+  {$IFDEF FMX}Ics.fmx.{$ENDIF FMX}OverbyteIcsSslBase,
   OverbyteIcsSSLEAY,
  {$ENDIF USE_SSL}
- {$ENDIF FPC}
+ {$ENDIF ~FPC}
   srvConst, srvUtils, srvVars,
   HSUtils;
 

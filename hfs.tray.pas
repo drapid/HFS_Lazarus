@@ -6,7 +6,6 @@ interface
 uses
   Windows,
  {$IFDEF FPC}
-  RnQGraphics32,
   SysUtils, Classes, Graphics,
   ImgList,
   IntfGraphics,

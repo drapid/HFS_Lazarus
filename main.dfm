@@ -83,24 +83,24 @@ object mainFrm: TmainFrm
       ImageIndex = 38
       OnClick = portBtnClick
     end
-    object ToolButton4: TToolButton
+    object Sep2TBtn: TToolButton
       Left = 157
       Height = 22
       Top = 2
-      Caption = 'ToolButton4'
+      Caption = 'Sep2'
       ImageIndex = 15
       Style = tbsSeparator
     end
-    object ToolButton2: TToolButton
-      Left = 165
+    object Sep3TBtn: TToolButton
+      Left = 313
       Height = 22
       Top = 2
-      Caption = 'ToolButton2'
+      Caption = 'Sep3'
       ImageIndex = 16
       Style = tbsSeparator
     end
     object modeBtn: TToolButton
-      Left = 173
+      Left = 165
       Hint = 'Click to switch'#13#10'F5 on keyboard'
       Top = 2
       AutoSize = True

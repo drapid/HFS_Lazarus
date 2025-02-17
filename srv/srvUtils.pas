@@ -17,7 +17,8 @@ uses
   Classes, Types,
    //RegularExpressions,
   regexpr,
-  HSLib, srvConst, serverLib;
+  srvClassesLib,
+  HSLib, srvConst;
 
 type
   TreCB = procedure(re: TregExpr; var res: String; data: Pointer);
@@ -55,7 +56,7 @@ type
  {$ELSE FMX}
   function stringToColorEx(s: String; default: Tcolor=clNone):Tcolor;
  {$ENDIF FMX}
-//  function reCache(exp:string; mods:string='m'):TregExpr;
+//  function reCache(exp: String; mods: String='m'): TregExpr;
   function reMatch(const s, exp: UnicodeString; mods: String='m'; ofs: Integer=1; subexp: PstringDynArray=NIL): Integer;
   function reReplace(const subj, exp, repl: String; const mods: String='m'): String;
   function reGet(const s, exp: String; subexpIdx:integer=1; const mods: String='!mi'; ofs:integer=1): String;
@@ -298,14 +299,12 @@ const
 implementation
 uses
   math, SysUtils, strutils, iniFiles, DateUtils,
- {$IFDEF FPC}
-  WSocket,
- {$ELSE FPC}
-  UIConsts,
   OverbyteIcsWSocket,
+ {$IFNDEF FPC}
+  UIConsts,
   OverbyteIcsTypes,
   OverbyteIcsUtils,
- {$ENDIF FPC}
+ {$ENDIF ~FPC}
  {$IFNDEF USE_MORMOT_COLLECTIONS}
   Generics.Collections,
  {$ELSE USE_MORMOT_COLLECTIONS}
@@ -317,6 +316,7 @@ uses
   ansistrings,
   {$ENDIF UNICODE}
   HSUtils,
+  serverLib,
   srvVars;
 
 resourcestring
@@ -1461,11 +1461,7 @@ begin
         k := src[i];
         v := src[i+1];
         if dst = NIL then
-         {$IFNDEF USE_MORMOT_COLLECTIONS}
-          dst := TMacroTableVal.Create;
-         {$ELSE USE_MORMOT_COLLECTIONS}
-          dst := Collections.NewKeyValue<String, UnicodeString>;
-         {$ENDIF USE_MORMOT_COLLECTIONS}
+          dst := newMacroTableVal;
         if not dst.TryAdd(k, v) then
           dst.Items[k] := v;
         inc(i, 2);

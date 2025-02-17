@@ -68,8 +68,8 @@ type
     topToolbar: TToolBar;
     startBtn: TToolButton;
     SepTB1: TToolButton;
-    ToolButton2: TToolButton;
-    ToolButton4: TToolButton;
+    Sep3TBtn: TToolButton;
+    Sep2TBtn: TToolButton;
     menuBtn: TToolButton;
     menu: TPopupMenu;
     About1: TMenuItem;
@@ -3100,20 +3100,46 @@ begin
         lastGoodConnHeight := int
        else
       if h = 'files-stay-flagged-for-minutes'then
-        filesStayFlaggedForMinutes:=int;
-      if h = 'folders-before' then foldersbeforeChk.checked:=yes;
-    if h = 'include-pwd-in-pages' then pwdInPagesChk.Checked:=yes;
-    if h = 'minimize-to-tray' then MinimizetotrayChk.checked:=yes;
-    if h = 'prevent-standby' then preventStandbyChk.checked:=yes;
-		if h = 'use-system-icons' then usesystemiconsChk.checked:=yes;
-    if h = 'quit-dont-ask' then quitWithoutAskingToSaveChk.checked:=yes;
-		if h = 'auto-save-options' then autosaveoptionsChk.checked:=yes;
-    if h = 'use-comment-as-realm' then usecommentasrealmChk.checked:=yes;
-    if h = 'persistent-connections'then persistentconnectionsChk.checked:=yes;
-		if h = 'show-main-tray-icon' then showmaintrayiconChk.checked:=yes;
-    if h = 'delete-dont-ask' then deleteDontAskChk.checked:=yes;
-	  if h = 'tray-icon-for-each-download' then trayfordownloadChk.checked:=yes;
-    if h = 'copy-url-on-addition' then AutocopyURLonadditionChk.checked:=yes;
+        filesStayFlaggedForMinutes := int
+       else
+      if h = 'folders-before' then
+        foldersbeforeChk.checked := yes
+       else
+      if h = 'include-pwd-in-pages' then
+        pwdInPagesChk.Checked := yes
+       else
+      if h = 'minimize-to-tray' then
+        MinimizetotrayChk.checked := yes
+       else
+      if h = 'prevent-standby' then
+        preventStandbyChk.checked := yes
+       else
+      if h = 'use-system-icons' then
+        usesystemiconsChk.checked := yes
+       else
+      if h = 'quit-dont-ask' then
+        quitWithoutAskingToSaveChk.checked := yes
+       else
+      if h = 'auto-save-options' then
+        autosaveoptionsChk.checked := yes
+       else
+      if h = 'use-comment-as-realm' then
+        usecommentasrealmChk.checked:=yes
+       else
+      if h = 'persistent-connections'then
+        persistentconnectionsChk.checked:=yes
+       else
+      if h = 'show-main-tray-icon' then
+        showmaintrayiconChk.checked:=yes
+       else
+      if h = 'delete-dont-ask' then
+        deleteDontAskChk.checked := yes
+       else
+      if h = 'tray-icon-for-each-download' then
+        trayfordownloadChk.checked := yes
+       else
+      if h = 'copy-url-on-addition' then
+        AutocopyURLonadditionChk.checked:=yes;
     if h = 'copy-url-on-start' then autocopyURLonstartChk.checked:=yes;
     if h = 'enable-macros' then enableMacrosChk.checked:=yes;
     if h = 'update-daily' then updateDailyChk.checked:=yes;
@@ -4296,11 +4322,6 @@ end; // updateSbar
 procedure Tmainfrm.refreshIPlist();
 CONST
   INDEX_FOR_URL = 2;
-  {$IFDEF USE_IPv6}
-  INDEX_FOR_NIC = 2;
-  {$ELSE USE_IPv6}
-  INDEX_FOR_NIC = 1;
-  {$ENDIF USE_IPv6}
 var
   a: TUnicodeStringDynArray;
   a4: TStringDynArray;
@@ -4308,6 +4329,7 @@ var
   a6: TStringDynArray;
  {$ENDIF USE_IPv6}
   i: integer;
+  delimIdx: Integer;
 begin
   while IPaddress1.Items[INDEX_FOR_URL].Caption <> '-' do
     IPaddress1.delete(INDEX_FOR_URL);
@@ -4317,9 +4339,11 @@ begin
     mainfrm.IPaddress1.Insert(INDEX_FOR_URL,
       newItem(a[i], 0, a[i]=defaultIP, TRUE, ipmenuclick, 0, '') );
 
+ ////////////////// Accept Menu /////////////////////////////
+  delimIdx := AddrDelim.MenuIndex;
   // fill 'Accept connections on' menu
-  while Acceptconnectionson1.count > INDEX_FOR_NIC  do
-    Acceptconnectionson1.delete(INDEX_FOR_NIC);
+  while Acceptconnectionson1.count > delimIdx+1  do
+    Acceptconnectionson1.delete(delimIdx+1);
 
  {$IFDEF USE_IPv6}
  // IPv6
@@ -4329,7 +4353,7 @@ begin
   addUniqueString('::1', a6);
   if length(a6) > 0 then
    for i:=0 to length(a6)-1 do
-    Acceptconnectionson1.Insert(INDEX_FOR_NIC,
+    Acceptconnectionson1.Insert(delimIdx+1,
       newItem( '[' + a6[i] + ']', 0,
               ((a6[i]=listenOn)or (('[' + a6[i] + ']') = listenOn)),
               TRUE, acceptOnMenuclick, 0, '') );
@@ -4339,7 +4363,7 @@ begin
   a4 := getLocalIPs({$IFDEF USE_IPv6}sfIPv4{$ENDIF USE_IPv6});
   addUniqueString('127.0.0.1', a4);
   for i:=0 to length(a4)-1 do
-    Acceptconnectionson1.Insert(INDEX_FOR_NIC,
+    Acceptconnectionson1.Insert(delimIdx+1,
       newItem( a4[i], 0, a4[i]=listenOn, TRUE, acceptOnMenuclick, 0, '') );
 end; // refreshIPlist
 
@@ -5167,9 +5191,19 @@ var
       result := format(MSG_SPEED_KBS,[d/1000])
   end; // getSpeed
 
+  procedure changeSubItem(itemIndex: Integer; const val: String);
+  begin
+    if item.subItems.Count > itemIndex then
+     if item.subItems[itemIndex] <> val then
+      begin
+        item.subItems[itemIndex] := val;
+      end;
+  end;
+
 var
   progress: real;
   s: String;
+  img: Integer;
 begin
   if quitting then
     exit;
@@ -5178,34 +5212,40 @@ begin
   data := conn2data(fileSrv, item);
   if data = NIL then
     exit;
-  item.caption := nonEmptyConcat('', data.usr, '@')+data.address+':'+data.conn.port;
+  s := nonEmptyConcat('', data.usr, '@')+data.address+':'+data.conn.port;
+  if item.caption <> s then
+    item.caption := s;
   while item.subitems.count < 5 do
     item.subitems.add('');
 
-  item.imageIndex := -1;
+  img := -1;
   progress := -1;
   if data.conn.isDisconnected then
-    item.imageIndex := 21
+    img := 21
    else if data.isSendingFile then
     begin
-      item.imageIndex := 32;
+      img := 32;
       progress := data.conn.bytesSentLastItem / data.conn.bytesPartial;
     end
    else if data.isReceivingFile then
     begin
-      item.imageIndex := 33;
+      img := 33;
       progress := data.conn.bytesPosted / data.conn.post.length;
     end;
+  if img <> item.imageIndex then
+    begin
+      item.imageIndex := img;
+    end;
 
-  item.subItems[0] := getFname();
-  item.subItems[1] := getStatus();
-  item.subItems[2] := getSpeed();
-  item.subItems[3] := getETA(data);
+  changeSubItem(0, getFname());
+  changeSubItem(1, getStatus());
+  changeSubItem(2, getSpeed());
+  changeSubItem(3, getETA(data));
   if progress<0 then
     s := ''
    else
     s := format('%d%%', [trunc(progress*100)]);
-  item.subItems[4] := s;
+  changeSubItem(4, s)
 end;
 
 function TmainFrm.appEventsHelp(Command: Word; Data: NativeInt;
@@ -6267,37 +6307,42 @@ var
   updateURL: string;
   info: Ttpl;
 begin
-progFrm.show(MSG_SRC_UPD);
-try info:=downloadUpdateInfo()
-finally progFrm.hide() end;
-
-if info = NIL then
-  begin
-  msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
-  exit;
+  progFrm.show(MSG_SRC_UPD);
+  try
+    info := downloadUpdateInfo()
+   finally
+    progFrm.hide()
   end;
 
-try
-  msgDlg(format(MSG_UPD_INFO, [ info['last stable'], first([info['last untested'],'none']) ]));
+  if info = NIL then
+  begin
+    msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
+    exit;
+  end;
 
-  updateURL:='';
-  if trim(info['last stable build']) > VERSION_BUILD then
-    begin
-    msgDlg(format(MSG_NEWER,[info['last stable']]));
-    updateURL:=trim(info['last stable url']);
-    end
-  else
-    if (not VERSION_STABLE or testerUpdatesChk.checked)
-    and (trim(info['last untested build']) > VERSION_BUILD) then
+  try
+    msgDlg(format(MSG_UPD_INFO, [ info['last stable'], first([info['last untested'],'none']) ]));
+
+    updateURL:='';
+    if trim(info['last stable build']) > VERSION_BUILD then
       begin
-      msgDlg(format(MSG_NEWER,[info['last untested']]));
-      updateURL:=trim(info['last untested url']);
-      end;
+        msgDlg(format(MSG_NEWER,[info['last stable']]));
+        updateURL:=trim(info['last stable url']);
+      end
+     else
+      if (not VERSION_STABLE or testerUpdatesChk.checked)
+         and (trim(info['last untested build']) > VERSION_BUILD) then
+        begin
+          msgDlg(format(MSG_NEWER,[info['last untested']]));
+          updateURL:=trim(info['last untested url']);
+        end;
 
-  msgDlg(info['notice'], MB_ICONWARNING);
-  parseVersionNotice(info['version notice']);
-finally info.free end;
-promptForUpdating(updateURL);
+    msgDlg(info['notice'], MB_ICONWARNING);
+    parseVersionNotice(info['version notice']);
+   finally
+    info.free
+  end;
+  promptForUpdating(updateURL);
 end;
 
 procedure Tmainfrm.setEasyMode(easy:boolean=TRUE);
@@ -8339,6 +8384,7 @@ var
   files: TUnicodeStringDynArray;
   i, n: integer;
 begin
+  files := NIL;
   if not selectFiles('', files) then
     exit;
   n := IconsDM.images.Count;

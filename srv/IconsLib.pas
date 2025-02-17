@@ -88,6 +88,7 @@ type
   function ico2str(hndl: THandle; icoNdx: Integer; imgSize: Integer): RawByteString;
   function ico2bmp(hndl: THandle; icoNdx: Integer; imgSize: Integer): TBitmap;
 
+  function WebPTryLoad: Boolean;
   function bmp2strWebP(bmp: Tbitmap): RawByteString;
   function bmp2strWebPAllowed: Boolean;
   function WebPLibVersion: String;
@@ -136,6 +137,7 @@ var
   imagescacheSm: array of RawByteString;
   imagescacheBg: array of RawByteString;
   sysidx2index: array of record sysidx, idx:integer; end; // maps system imagelist icons to internal imagelist
+  fWebPVer: Integer;
 
 
 function Shell_GetImageLists(var hl, hs: Thandle): boolean; stdcall; external 'shell32.dll' index 71;
@@ -459,6 +461,31 @@ end; // bmp2str
 function bmp2strWebPAllowed: Boolean;
 begin
   Result := libWebp_IsLoaded;
+end;
+
+function WebPTryLoad: Boolean;
+var
+  h: HMODULE;
+  fn: UnicodeString;
+begin
+//  fWebPVer := 0;
+  fn := exePath + clibWebpName;
+  h := LoadLibraryW(PWideChar(fn));
+  if h = 0 then
+    begin
+      fn := exePath + clibWebpName2;
+      h := LoadLibraryW(PWideChar(fn));
+    end;
+  if h <> 0 then
+  begin
+  if libWebp_Load(fn) and (@WebPGetEncoderVersion <> NIL) then
+    try
+      fWebPVer := WebPGetEncoderVersion
+     except
+      fWebPVer := 0;
+    end
+  end;
+  Result := fWebPVer <> 0;
 end;
 
 function WebPLibVersion: String;

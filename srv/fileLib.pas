@@ -245,8 +245,8 @@ uses
    mormot.core.datetime,
  {$ENDIF USE_MORMOT}
   serverLib,
-  srvConst, srvUtils, srvVars,
   HSUtils,
+  srvConst, srvUtils, srvVars,
  {$IFDEF FMX}
   IconsFMXLib,
  {$ELSE ~FMX}
@@ -1650,21 +1650,23 @@ begin
            size := 120;
           e := GetThumbFromCache(resource, bmp, size);
           if Succeeded(e) then
+            begin
+              if AcceptWebP and bmp2strWebPAllowed then
                 begin
-                  if AcceptWebP and bmp2strWebPAllowed then
-                    begin
-                     b := bmp2strWebP(bmp);
-                     format := 'image/webp';
-                    end
-                   else
-                    begin
-                     b := bmp2str(bmp);
-                     format := 'image/png';
-                    end;
-                  str := TRawByteStringStream.Create(b);
-                  str.Position := 0;
-                  Result := str.Size > 0;
+                 b := bmp2strWebP(bmp);
+                 format := 'image/webp';
+                end
+               else
+                begin
+                 b := bmp2str(bmp);
+                 format := 'image/png';
                 end;
+              str := TRawByteStringStream.Create(b);
+              str.Position := 0;
+              Result := str.Size > 0;
+            end
+           else
+            Result := False;
           bmp.Free;
        end;
     end;

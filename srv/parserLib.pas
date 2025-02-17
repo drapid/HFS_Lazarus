@@ -6,11 +6,6 @@ interface
 
 uses
   strutils, sysutils, classes, types, windows,
-  {$IFNDEF USE_MORMOT_COLLECTIONS}
-  Generics.Collections,
-  {$ELSE USE_MORMOT_COLLECTIONS}
-  mormot.core.collections,
-  {$ENDIF USE_MORMOT_COLLECTIONS}
   srvClassesLib,
   serverLib;
 
