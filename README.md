@@ -21,6 +21,8 @@ For the default template we are targeting compatibility with Chrome 49 as it's t
 
 Now it can be build with full unicode support and in X64.
 <img src="https://rnq.ru/forum/attachment/1977" alt="Unicode">
+![image](https://github.com/user-attachments/assets/9cf53491-2710-400a-88a9-158484bcfb6c)
+
 
 ## Libs used
 - [ICS for Lazarus](https://github.com/drapid/ICS_Lazarus) v9 by François PIETTE
