@@ -34,10 +34,13 @@ interface
 uses
   classes, messages, sysutils, strUtils, inifiles, types,
   winsock,
- {$IFNDEF FPC}
+  mormot.core.base,
+  mormot.net.server,
+  mormot.net.async,
+ { FPC}
   winprocs,
   mormot.core.base,
- {$ENDIF ~FPC}
+ { ~FPC}
   Forms, extctrls,
   OverbyteIcsWSocket,
   contnrs
@@ -232,6 +235,7 @@ type
     procedure setICSBufSize(v: Integer);
     function  getIsDisconnected: Boolean;
     function  getIsSendingStream: Boolean;
+    function  getIsConnected: Boolean;
   public
     sock: Twsocket;             // client-server communication socket
     httpState: ThttpConnState;  // what is doing now with this
@@ -288,6 +292,7 @@ type
     property hsrv: ThttpSrv read P_srv;
     property isDisconnected: Boolean read getIsDisconnected;
     property isSendingStream: Boolean read getIsSendingStream;
+    property isConnected: Boolean read getIsConnected;
    end;
 
   ThttpSrv = class
@@ -300,6 +305,8 @@ type
     P_autoFree: boolean;
     P_speedIn, P_speedOut: real;
     bsent, brecvd: int64;
+    FAsyncServer: THttpAsyncServer;
+    function  DoOnRequest(Ctxt: THttpServerRequestAbstract): cardinal;
     procedure setPort(v:string);
     function  getActive():boolean;
     procedure setActive(v:boolean);
@@ -354,15 +361,38 @@ implementation
 
 uses
   Windows,
-{$IFDEF UNICODE}
+{ UNICODE}
   AnsiStrings,
 //  AnsiClasses,
-{$ENDIF UNICODE}
+{ UNICODE}
   OverbyteIcsTypes,
   math,
   RDUtils, Base64,
   HSUtils,
   srvConst;
+
+type
+  TRequestBridge = class
+  public
+    conn: ThttpConn;
+    procedure RunProcess;
+    procedure RunComplete;
+  end;
+
+procedure TRequestBridge.RunProcess;
+begin
+  conn.processInputBuffer();
+end;
+
+procedure TRequestBridge.RunComplete;
+begin
+  conn.httpState := HCS_REPLYING_BODY;
+  conn.notify(HE_REPLIED);
+  conn.notify(HE_LAST_BYTE_DONE);
+  conn.Free;
+end;
+
+
 
 const
   HEADER_LIMITER: RawByteString = CRLFA+CRLFA;
@@ -510,46 +540,31 @@ end;
 /////// SERVER
 
 function ThttpSrv.start(onAddress: String='*'): Boolean;
+var
+  bindAddr: String;
 begin
   result := FALSE;
-  if active or not assigned(sock) then
+  if active then
     exit;
   try
     if onAddress = '[*]' then
-      begin
-        sock.addr := '[0::0]'
-      end
-     else
-      begin
-        if onAddress = '' then onAddress:='*';
-        if (onAddress = '') or (onAddress = '*') then
-          sock.addr := '0.0.0.0'
-         else
-          sock.addr := onAddress;
-      end;
-    sock.port := port;
-  //  sock.proto:='6';
-    sock.proto := 'tcp';
- {$IFDEF USE_IPv6}
-    sock.SocketFamily := sfAny;
- {$ENDIF USE_IPv6}
-    sock.listen();
-    if port = '0' then
-      P_port := sock.getxport();
-    result := TRUE;
+      bindAddr := '0.0.0.0'
+    else if (onAddress = '') or (onAddress = '*') then
+      bindAddr := ''
+    else
+      bindAddr := onAddress;
 
-  {
-    if onAddress = '*' then
-      try
-        sock.MultiListenSockets.Clear();
-        with sock.MultiListenSockets.Add do
-          begin
-          addr := '::';
-          Port := sock.port
-          end;
-        sock.MultiListen();
-      except end;
-  }
+    FAsyncServer := THttpAsyncServer.Create(
+      port, nil, nil, bindAddr, TThread.ProcessorCount + 1, 30000,
+      [hsoNoXPoweredHeader,
+       hsoNoStats,
+       hsoHeadersInterning,
+       hsoThreadSmoothing]
+    );
+    FAsyncServer.OnRequest := DoOnRequest;
+    FAsyncServer.WaitStarted;
+
+    result := TRUE;
     notify(HE_OPEN, NIL);
    except
   end;
@@ -557,14 +572,72 @@ end; // start
 
 procedure ThttpSrv.stop();
 begin
-if assigned(sock) then
- begin
-  try
-    sock.Close()
-   except
+  if Assigned(FAsyncServer) then
+  begin
+    try
+      FAsyncServer.Free;
+      FAsyncServer := nil;
+      notify(HE_CLOSE, NIL);
+    except
+    end;
   end;
-//  try sock.multiListenSockets.clear() except end;
- end;
+end;
+
+function ThttpSrv.DoOnRequest(Ctxt: THttpServerRequestAbstract): cardinal;
+var
+  conn: ThttpConn;
+  bridge: TRequestBridge;
+  statusCode: integer;
+begin
+  conn := ThttpConn.create(Self, nil);
+  conn.P_address := string(Ctxt.InIP);
+  conn.httpRequest.url := string(Ctxt.Url);
+
+  if SameText(Ctxt.Method, 'GET') then
+    conn.httpRequest.method := HM_GET
+  else if SameText(Ctxt.Method, 'POST') then
+    conn.httpRequest.method := HM_POST
+  else if SameText(Ctxt.Method, 'HEAD') then
+    conn.httpRequest.method := HM_HEAD
+  else
+    conn.httpRequest.method := HM_UNK;
+
+  conn.httpRequest.full := Ctxt.Method + ' ' + Ctxt.Url + ' HTTP/1.1' + #13#10 + Ctxt.InHeaders + #13#10#13#10;
+  conn.buffer := Ctxt.InContent;
+
+  bridge := TRequestBridge.Create;
+  try
+    bridge.conn := conn;
+    TThread.Synchronize(nil, @bridge.RunProcess);
+
+    // Transfer custom headers
+    Ctxt.OutCustomHeaders := conn.reply.fAdditionalHeaders;
+    Ctxt.OutContentType := conn.reply.contentType;
+
+    // Read stream / reply body (Custom Stream for Large Files and Dynamic Archives!)
+    if Assigned(conn.stream) then
+    begin
+      // Hand over the stream to mORMot2 to stream chunk-by-chunk asynchronously
+      Ctxt.OutContentStream := conn.stream;
+      conn.stream := nil; // hand over ownership
+    end
+    else
+    begin
+      Ctxt.OutContent := conn.reply.body;
+    end;
+
+    // Determine status code
+    if StartsStr('HTTP/1.1 ', conn.reply.header) then
+      statusCode := StrToIntDef(Copy(conn.reply.header, 10, 3), 200)
+    else
+      statusCode := HRM2CODE[conn.reply.mode];
+
+    Result := statusCode;
+
+    TThread.Synchronize(nil, @bridge.RunComplete);
+  finally
+    bridge.Free;
+  end;
 end;
 
 procedure ThttpSrv.connected(Sender: TObject; Error: Word);
@@ -773,7 +846,7 @@ end;
 
 function Thttpsrv.getActive():boolean;
 begin
-  result := assigned(sock) and (sock.State=wsListening)
+  result := assigned(FAsyncServer);
 end;
 
 procedure ThttpSrv.setActive(v:boolean);
@@ -852,41 +925,50 @@ constructor ThttpConn.create(server: ThttpSrv; acceptingSock: Twsocket);
 var
   i: integer;
 begin
-// init socket
-  sock := Twsocket.create(NIL);
-//  sock.MultiThreaded := True;
-  if acceptingSock <> NIL then
-    sock.Dup(acceptingSock.accept())
-   else
-    sock.Dup(server.sock.accept());
-  sock.OnDataAvailable := dataavailable;
-  sock.OnSessionClosed := disconnected;
-  sock.onSendData := senddata;
-  sock.onDataSent := datasent;
-  sock.LineMode := FALSE;
-
   P_srv := server;
 
   httpRequest.headers := ThashedStringList.create;
   httpRequest.headers.nameValueSeparator := ':';
   limiters := TObjectList.create;
   limiters.ownsObjects:=FALSE;
-  P_address := sock.GetPeerAddr();
-  P_port := sock.GetPeerPort();
- {$IFDEF USE_IPv6}
-  P_v6 := sock.SocketFamily = sfIPv6;
- {$ELSE ~USE_IPv6}
-  P_v6 := false;
- {$ENDIF USE_IPv6}
+
+  if (acceptingSock <> NIL) or ((server <> NIL) and (server.sock <> NIL)) then
+  begin
+    sock := Twsocket.create(NIL);
+    if acceptingSock <> NIL then
+      sock.Dup(acceptingSock.accept())
+     else
+      sock.Dup(server.sock.accept());
+    sock.OnDataAvailable := dataavailable;
+    sock.OnSessionClosed := disconnected;
+    sock.onSendData := senddata;
+    sock.onDataSent := datasent;
+    sock.LineMode := FALSE;
+    P_address := sock.GetPeerAddr();
+    P_port := sock.GetPeerPort();
+   { USE_IPv6}
+    P_v6 := sock.SocketFamily = sfIPv6;
+   { ~USE_IPv6}
+    P_v6 := false;
+   { USE_IPv6}
+    i := sizeOf(P_sndBuf);
+    if WSocket_getsockopt(sock.HSocket, SOL_SOCKET, SO_SNDBUF, @P_sndBuf, i) <> NO_ERROR then
+      P_sndBuf:=0;
+  end
+  else
+  begin
+    sock := nil;
+    P_address := '';
+    P_port := '';
+    P_v6 := false;
+    P_sndBuf := 0;
+  end;
+
   httpState := HCS_IDLE;
   P_srv.conns.add(self);
   clearRequest();
   clearReply();
   QueryPerformanceCounter(lastSpeedTime);
-
-  i := sizeOf(P_sndBuf);
-  if WSocket_getsockopt(sock.HSocket, SOL_SOCKET, SO_SNDBUF, @P_sndBuf, i) <> NO_ERROR then
-    P_sndBuf:=0;
 
   server.notify(HE_CONNECTED, self);
   if reply.mode <> HRM_CLOSE then
@@ -1563,6 +1645,8 @@ var
   buf: RawByteString;
 begin
   result := 0;
+  if sock = NIL then
+    exit;
   if stream = NIL then
     exit;
   n := trunc(speedOut*1.5);
@@ -1596,6 +1680,8 @@ procedure ThttpConn.socketSetNoDelay;
 var
   i: Integer;
 begin
+  if sock = NIL then
+    exit;
   i := -1;
   WSocket_setsockopt(Sock.HSocket, IPPROTO_TCP, TCP_NODELAY, @i, sizeOf(i));
 end;
@@ -1622,10 +1708,11 @@ begin
     reply.headerU := h;
   reply.headerAdd(reply.fAdditionalHeaders);
 
-  try
-     sock.sendStr(reply.header+CRLFA);
-   except
-  end;
+  if Assigned(sock) then
+    try
+       sock.sendStr(reply.header+CRLFA);
+     except
+    end;
 end; // sendHeader
 
 procedure ThttpConn.sendheader(const h: RawByteString='');
@@ -1635,10 +1722,11 @@ begin
     reply.header := h;
   reply.headerAdd(reply.fAdditionalHeaders);
 
-  try
-     sock.sendStr(reply.header+CRLFA);
-   except
-  end;
+  if Assigned(sock) then
+    try
+       sock.sendStr(reply.header+CRLFA);
+     except
+    end;
 end; // sendHeader
 
 function replycode2reason(code:integer): RawByteString;
@@ -1777,6 +1865,8 @@ begin result:=lockCount > 0 end;
 
 procedure ThttpConn.setSndbuf(v: Integer);
 begin
+  if sock = NIL then
+    exit;
   if P_sndBuf = v then
     exit;
   P_sndBuf := v;
@@ -1785,12 +1875,16 @@ end;
 
 procedure ThttpConn.setICSBufSize(v: Integer);
 begin
-  Sock.BufSize := v;
+  if sock <> NIL then
+    Sock.BufSize := v;
 end;
 
 function ThttpConn.getICSBufSize: Integer;
 begin
-  Result := Sock.BufSize;
+  if sock <> NIL then
+    Result := Sock.BufSize
+  else
+    Result := 0;
 end;
 
 function ThttpConn.getIsDisconnected: Boolean;
@@ -1801,6 +1895,14 @@ end;
 function ThttpConn.getIsSendingStream: Boolean;
 begin
   Result := reply.bodyMode = RBM_STREAM;
+end;
+
+function ThttpConn.getIsConnected: Boolean;
+begin
+  if sock <> NIL then
+    Result := sock.State = wsConnected
+  else
+    Result := not getIsDisconnected;
 end;
 
 constructor TspeedLimiter.create(max: Integer=MAXINT);
