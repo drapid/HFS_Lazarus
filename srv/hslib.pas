@@ -42,7 +42,6 @@ uses
   mormot.core.base,
  { ~FPC}
   Forms, extctrls,
-  OverbyteIcsWSocket,
   contnrs
   ;
 
@@ -237,7 +236,7 @@ type
     function  getIsSendingStream: Boolean;
     function  getIsConnected: Boolean;
   public
-    sock: Twsocket;             // client-server communication socket
+    sock: TObject;             // client-server communication socket
     httpState: ThttpConnState;  // what is doing now with this
     httpRequest: ThttpRequest;  // it requests
     reply: ThttpReply;          // we serve
@@ -247,7 +246,7 @@ type
     eventData: RawByteString;
     ignoreSpeedLimit: boolean;
     limiters: TobjectList;     // every connection can be bound to a number of TspeedLimiter
-    constructor create(server: ThttpSrv; acceptingSock: TWsocket);
+    constructor create(server: ThttpSrv);
     destructor Destroy; override;
     procedure disconnect();
 //    procedure addHeader(s: String; overwrite: Boolean=TRUE); OverLoad; // append an additional header line
@@ -321,7 +320,7 @@ type
     procedure processDisconnecting();
   public
 //    sock: TwsocketServer;     // listening multiple sockets
-    sock: Twsocket;     // listening socket
+    sock: TObject;     // listening socket
     conns,          // full list of connected clients
     disconnecting,  // list of pending disconnections
     offlines,       // disconnected clients to be freed
@@ -365,7 +364,6 @@ uses
   AnsiStrings,
 //  AnsiClasses,
 { UNICODE}
-  OverbyteIcsTypes,
   math,
   RDUtils, Base64,
   HSUtils,
@@ -589,7 +587,7 @@ var
   bridge: TRequestBridge;
   statusCode: integer;
 begin
-  conn := ThttpConn.create(Self, nil);
+  conn := ThttpConn.create(Self);
   conn.P_address := string(Ctxt.InIP);
   conn.httpRequest.url := string(Ctxt.Url);
 
@@ -642,8 +640,6 @@ end;
 
 procedure ThttpSrv.connected(Sender: TObject; Error: Word);
 begin
-  if error=0 then
-    ThttpConn.create(self, sender as Twsocket)
 end;
 
 procedure ThttpSrv.disconnected(Sender: TObject; Error: Word);
@@ -921,9 +917,7 @@ begin canClose:=FALSE end;
 
 ////////// CLIENT
 
-constructor ThttpConn.create(server: ThttpSrv; acceptingSock: Twsocket);
-var
-  i: integer;
+constructor ThttpConn.create(server: ThttpSrv);
 begin
   P_srv := server;
 
@@ -932,37 +926,11 @@ begin
   limiters := TObjectList.create;
   limiters.ownsObjects:=FALSE;
 
-  if (acceptingSock <> NIL) or ((server <> NIL) and (server.sock <> NIL)) then
-  begin
-    sock := Twsocket.create(NIL);
-    if acceptingSock <> NIL then
-      sock.Dup(acceptingSock.accept())
-     else
-      sock.Dup(server.sock.accept());
-    sock.OnDataAvailable := dataavailable;
-    sock.OnSessionClosed := disconnected;
-    sock.onSendData := senddata;
-    sock.onDataSent := datasent;
-    sock.LineMode := FALSE;
-    P_address := sock.GetPeerAddr();
-    P_port := sock.GetPeerPort();
-   { USE_IPv6}
-    P_v6 := sock.SocketFamily = sfIPv6;
-   { ~USE_IPv6}
-    P_v6 := false;
-   { USE_IPv6}
-    i := sizeOf(P_sndBuf);
-    if WSocket_getsockopt(sock.HSocket, SOL_SOCKET, SO_SNDBUF, @P_sndBuf, i) <> NO_ERROR then
-      P_sndBuf:=0;
-  end
-  else
-  begin
-    sock := nil;
-    P_address := '';
-    P_port := '';
-    P_v6 := false;
-    P_sndBuf := 0;
-  end;
+  sock := nil;
+  P_address := '';
+  P_port := '';
+  P_v6 := false;
+  P_sndBuf := 0;
 
   httpState := HCS_IDLE;
   P_srv.conns.add(self);
