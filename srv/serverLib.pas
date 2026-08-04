@@ -327,7 +327,7 @@ uses
  {$IFDEF ZIP_ZSTD}
    ZSTDLib,
  {$ENDIF ZIP_ZSTD}
-  RnQzip, RnQLangs, RnQDialogs, RnQJSON,
+  RnQzip, RnQLangs, RnQDialogs, RnQJSON, main,
   IconsLib,
   HSUtils,
   srvUtils, parserLib, srvVars;
@@ -2925,7 +2925,7 @@ begin
   if lToZstd and not cd.conn.reply.IsCompressed then
     s := ZSTDCompressStr(s)
    else
-    begin 
+    begin
     // workaround for IE6 pre-SP2 bug
       if (cd.workaroundForIEutf8  = wi_toDetect) and (cd.agent > '') then
         if reMatch(cd.agent, '^MSIE [4-6]\.', '!') > 0 then // version 6 and before
@@ -4378,6 +4378,75 @@ var
       begin
       Self.getPage('deny', data);
       exit;
+      end;
+
+    if (urlCmd = '~admin') then
+      begin
+      if conn.reply.mode=HRM_REPLY_HEADER then Exit;
+      if not accountAllowed(FA_ACCESS, data, f) then
+        begin
+        Self.getPage('unauth', data);
+        runEventScript('unauthorized');
+        Exit;
+        end;
+      data.downloadingWhat := DW_FOLDERPAGE;
+      replyWithString('<html>'+
+        '<head>'+
+        '<title>HFS Admin Panel</title>'+
+        '<style>'+
+        'body { font-family: Arial; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; } '+
+        'header { background: #333; color: #fff; padding: 10px; font-size: 20px; } '+
+        '#container { display: flex; flex-grow: 1; overflow: hidden; } '+
+        '#tree, #log { overflow: auto; padding: 10px; border: 1px solid #ccc; width: 50%; white-space: pre-wrap; margin: 5px; box-sizing: border-box; } '+
+        '#tree a { color: #0066cc; text-decoration: none; display: block; padding: 2px; } '+
+        '#tree a:hover { text-decoration: underline; background: #eee; } '+
+        '</style>'+
+        '</head>'+
+        '<body>'+
+        '<header>HFS Admin Panel</header>'+
+        '<div id="container">'+
+        '<div id="tree">Loading files...</div>'+
+        '<div id="log">Loading log...</div>'+
+        '</div>'+
+        '<script>'+
+        'function fetchTree() { '+
+        '  fetch("/~files.lst?tpl=list")'+
+        '  .then(r=>r.text())'+
+        '  .then(t=> { '+
+        '    let lines = t.split("
+"); '+
+        '    let treeDiv = document.getElementById("tree");'+
+        '    treeDiv.innerHTML = "";'+
+        '    lines.forEach(l => { '+
+        '      if(l.trim()){ '+
+        '        let a = document.createElement("a");'+
+        '        a.href = l;'+
+        '        a.target = "_blank";'+
+        '        a.textContent = l;'+
+        '        treeDiv.appendChild(a);'+
+        '      } '+
+        '    }); '+
+        '  }); '+
+        '} '+
+        'fetchTree(); '+
+        'setInterval(()=>fetch("/~log").then(r=>r.text()).then(t=>document.getElementById("log").innerText=t), 1000);'+
+        '</script>'+
+        '</body></html>');
+      Exit;
+      end;
+
+    if (urlCmd = '~log') then
+      begin
+      if conn.reply.mode=HRM_REPLY_HEADER then Exit;
+      if not accountAllowed(FA_ACCESS, data, f) then
+        begin
+        Self.getPage('unauth', data);
+        runEventScript('unauthorized');
+        Exit;
+        end;
+      data.downloadingWhat := DW_FOLDERPAGE;
+      replyWithString(mainFrm.logBox.Text);
+      Exit;
       end;
 
     if (urlCmd = '~folder.tar')
