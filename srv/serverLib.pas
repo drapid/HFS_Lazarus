@@ -2925,7 +2925,7 @@ begin
   if lToZstd and not cd.conn.reply.IsCompressed then
     s := ZSTDCompressStr(s)
    else
-    begin 
+    begin
     // workaround for IE6 pre-SP2 bug
       if (cd.workaroundForIEutf8  = wi_toDetect) and (cd.agent > '') then
         if reMatch(cd.agent, '^MSIE [4-6]\.', '!') > 0 then // version 6 and before
@@ -4661,7 +4661,6 @@ begin
     HE_CONNECTED:
       begin
         //** lets see if this helps with speed
-        conn.socketSetNoDelay;
 
         data := TconnData.create(conn, NIL);
         conn.limiters.add(globalLimiter); // every connection is bound to the globalLimiter

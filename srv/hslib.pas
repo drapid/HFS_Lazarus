@@ -39,8 +39,7 @@ uses
   mormot.core.base,
  {$ENDIF ~FPC}
   Forms, extctrls,
-  OverbyteIcsWSocket,
-  contnrs
+  mormot.core.base, mormot.core.os, mormot.net.server, mormot.net.async, contnrs
   ;
 
 const
@@ -50,6 +49,26 @@ type
   ThttpSrv=class;
 
   ThttpConn=class;
+
+  TRequestBridge = class(TThread)
+  private
+    FConn: ThttpConn;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(AConn: ThttpConn);
+    procedure DoSyncProcess;
+  end;
+
+  TRequestBridge = class(TThread)
+  private
+    FConn: ThttpConn;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create(AConn: ThttpConn);
+    procedure DoSyncProcess;
+  end;
 
   ThttpMethod=( HM_UNK, HM_GET, HM_POST, HM_HEAD );
 
@@ -207,9 +226,6 @@ type
     buffer: RawByteString;       // internal buffer for incoming data
     // event handlers
     procedure disconnected(Sender: TObject; Error: Word);
-    procedure dataavailable(Sender: TObject; Error: Word);
-    procedure senddata(sender: TObject; bytes: Integer);
-    procedure datasent(sender: TObject; error: word);
     function  fullBodySize(): Int64;
     function  partialBodySize(): Int64;
     function  sendNextChunk(max: Integer=MAXINT): Integer;
@@ -231,9 +247,9 @@ type
     function  getICSBufSize: Integer;
     procedure setICSBufSize(v: Integer);
     function  getIsDisconnected: Boolean;
+    function  getIsConnected: Boolean;
     function  getIsSendingStream: Boolean;
   public
-    sock: Twsocket;             // client-server communication socket
     httpState: ThttpConnState;  // what is doing now with this
     httpRequest: ThttpRequest;  // it requests
     reply: ThttpReply;          // we serve
@@ -243,7 +259,7 @@ type
     eventData: RawByteString;
     ignoreSpeedLimit: boolean;
     limiters: TobjectList;     // every connection can be bound to a number of TspeedLimiter
-    constructor create(server: ThttpSrv; acceptingSock: TWsocket);
+    constructor create(server: ThttpSrv; Ctxt: THttpServerRequestAbstract);
     destructor Destroy; override;
     procedure disconnect();
 //    procedure addHeader(s: String; overwrite: Boolean=TRUE); OverLoad; // append an additional header line
@@ -263,7 +279,6 @@ type
     function  isAcceptEncoding(const enc: String): Boolean;
     function  getBuffer(): RawByteString;
     function  initInputStream(): boolean;
-    procedure socketSetNoDelay;
     property address: String read P_address;      // other peer ip address
     property port: String read P_port;            // other peer port
     property v6: Boolean read P_v6;
@@ -287,6 +302,8 @@ type
     property sndBuf: integer read P_sndBuf write setSndBuf;
     property hsrv: ThttpSrv read P_srv;
     property isDisconnected: Boolean read getIsDisconnected;
+    property isConnected: Boolean read getIsConnected;
+    property isConnected: Boolean read getIsConnected;
     property isSendingStream: Boolean read getIsSendingStream;
    end;
 
@@ -314,7 +331,8 @@ type
     procedure processDisconnecting();
   public
 //    sock: TwsocketServer;     // listening multiple sockets
-    sock: Twsocket;     // listening socket
+    sock: THttpAsyncServer;     // listening socket
+    function OnRequest(Ctxt: THttpServerRequestAbstract): cardinal;
     conns,          // full list of connected clients
     disconnecting,  // list of pending disconnections
     offlines,       // disconnected clients to be freed
@@ -343,7 +361,7 @@ const
   MINIMUM_CHUNK_SIZE = 2*1024;
   MAXIMUM_CHUNK_SIZE = 1024*1024;
   HRM2CODE: array [ThttpReplyMode] of integer = (200, 200, 403, 401, 404, 400,
-  	500, 0, 0, 405, 302, 429, 413, 301, 304 );
+	500, 0, 0, 405, 302, 429, 413, 301, 304 );
   METHOD2STR: array [ThttpMethod] of string = ('UNK','GET','POST','HEAD');
   HRM2STR: array [ThttpReplyMode] of string = ('Head+Body', 'Head only', 'Deny',
     'Unauthorized', 'Not found', 'Bad request', 'Internal error', 'Close',
@@ -351,6 +369,216 @@ const
     'Moved permanently', 'Not Modified');
 
 implementation
+
+{ TRequestBridge }
+
+constructor TRequestBridge.Create(AConn: ThttpConn);
+begin
+  inherited Create(False);
+  FreeOnTerminate := False; // We use WaitFor, so do not free on terminate
+  FConn := AConn;
+end;
+
+procedure TRequestBridge.DoSyncProcess;
+begin
+  try
+    FConn.processInputBuffer();
+  finally
+    FConn.disconnect();
+    if FConn.stream <> nil then
+    begin
+      FConn.reply.bodyStream := FConn.stream;
+      FConn.reply.bodyMode := RBM_STREAM;
+    end;
+  end;
+end;
+
+procedure TRequestBridge.Execute;
+begin
+  Synchronize(DoSyncProcess);
+end;
+
+function ThttpSrv.OnRequest(Ctxt: THttpServerRequestAbstract): cardinal;
+var
+  conn: ThttpConn;
+  bridge: TRequestBridge;
+begin
+  Result := 200;
+
+  TThread.Synchronize(nil,
+    procedure
+    begin
+      conn := ThttpConn.create(Self, Ctxt);
+    end);
+
+  try
+    conn.httpRequest.full := Ctxt.InMethod + ' ' + Ctxt.InUrl + ' ' + Ctxt.InVersion + CRLFA + Ctxt.InHeaders + CRLFA + Ctxt.InContent;
+    conn.buffer := conn.httpRequest.full;
+    conn.brecvd := length(conn.buffer);
+
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        inc(Self.brecvd, length(conn.buffer));
+      end);
+
+    // Process input buffer synchronously in GUI thread
+    bridge := TRequestBridge.Create(conn);
+    try
+      bridge.WaitFor; // Wait for execution to finish
+    finally
+      bridge.Free;
+    end;
+
+    Result := HRM2CODE[conn.reply.mode];
+    if Result = 0 then Result := 200; // default for unknown codes like Close etc
+
+    if (conn.reply.mode = HRM_REPLY) or (conn.reply.mode = HRM_REPLY_HEADER) then
+    begin
+      Ctxt.OutCustomHeaders := conn.reply.fAdditionalHeaders;
+      if conn.reply.contentType <> '' then
+        Ctxt.OutContentType := conn.reply.contentType;
+
+      if conn.reply.bodyMode = RBM_STREAM then
+      begin
+        Ctxt.OutContentStream := conn.reply.bodyStream;
+        conn.stream := nil; // Prevent double free
+      end
+      else
+        Ctxt.OutContent := conn.reply.bodyBr;
+    end
+    else
+    begin
+      Ctxt.OutCustomHeaders := conn.reply.fAdditionalHeaders;
+      if conn.reply.bodyBr <> '' then
+        Ctxt.OutContent := conn.reply.bodyBr;
+    end;
+
+    // Simulate HE_REPLIED and HE_LAST_BYTE_DONE since we don't have async socket sending it
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        conn.notify(HE_REPLIED);
+        if Ctxt.OutContentStream <> nil then
+        begin
+          conn.notify(HE_LAST_BYTE_DONE);
+        end;
+      end);
+
+  finally
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        conn.httpState := HCS_DISCONNECTED; // transition to disconnected
+        conn.Free;
+      end);
+  end;
+end;
+
+{ TRequestBridge }
+
+constructor TRequestBridge.Create(AConn: ThttpConn);
+begin
+  inherited Create(False);
+  FreeOnTerminate := False; // We use WaitFor, so do not free on terminate
+  FConn := AConn;
+end;
+
+procedure TRequestBridge.DoSyncProcess;
+begin
+  try
+    FConn.processInputBuffer();
+  finally
+    FConn.disconnect();
+    if FConn.stream <> nil then
+    begin
+      FConn.reply.bodyStream := FConn.stream;
+      FConn.reply.bodyMode := RBM_STREAM;
+    end;
+  end;
+end;
+
+procedure TRequestBridge.Execute;
+begin
+  Synchronize(DoSyncProcess);
+end;
+
+function ThttpSrv.OnRequest(Ctxt: THttpServerRequestAbstract): cardinal;
+var
+  conn: ThttpConn;
+  bridge: TRequestBridge;
+begin
+  Result := 200;
+
+  TThread.Synchronize(nil,
+    procedure
+    begin
+      conn := ThttpConn.create(Self, Ctxt);
+    end);
+
+  try
+    conn.httpRequest.full := Ctxt.InMethod + ' ' + Ctxt.InUrl + ' ' + Ctxt.InVersion + CRLFA + Ctxt.InHeaders + CRLFA + Ctxt.InContent;
+    conn.buffer := conn.httpRequest.full;
+    conn.brecvd := length(conn.buffer);
+
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        inc(Self.brecvd, length(conn.buffer));
+      end);
+
+    // Process input buffer synchronously in GUI thread
+    bridge := TRequestBridge.Create(conn);
+    try
+      bridge.WaitFor; // Wait for execution to finish
+    finally
+      bridge.Free;
+    end;
+
+    Result := HRM2CODE[conn.reply.mode];
+    if Result = 0 then Result := 200; // default for unknown codes like Close etc
+
+    if (conn.reply.mode = HRM_REPLY) or (conn.reply.mode = HRM_REPLY_HEADER) then
+    begin
+      Ctxt.OutCustomHeaders := conn.reply.fAdditionalHeaders;
+      if conn.reply.contentType <> '' then
+        Ctxt.OutContentType := conn.reply.contentType;
+
+      if conn.reply.bodyMode = RBM_STREAM then
+      begin
+        Ctxt.OutContentStream := conn.reply.bodyStream;
+        conn.stream := nil; // Prevent double free
+      end
+      else
+        Ctxt.OutContent := conn.reply.bodyBr;
+    end
+    else
+    begin
+      Ctxt.OutCustomHeaders := conn.reply.fAdditionalHeaders;
+      if conn.reply.bodyBr <> '' then
+        Ctxt.OutContent := conn.reply.bodyBr;
+    end;
+
+    // Simulate HE_REPLIED and HE_LAST_BYTE_DONE since we don't have async socket sending it
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        conn.notify(HE_REPLIED);
+        if Ctxt.OutContentStream <> nil then
+        begin
+          conn.notify(HE_LAST_BYTE_DONE);
+        end;
+      end);
+
+  finally
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        conn.httpState := HCS_DISCONNECTED; // transition to disconnected
+        conn.Free;
+      end);
+  end;
+end;
 
 uses
   Windows,
@@ -372,7 +600,7 @@ const
                             'A', 'B', 'C', 'D', 'E', 'F']; //
   // used as body content when the user did not specify any
   HRM2BODY: array [ThttpReplyMode] of AnsiString = (
-  	'200 - OK',
+	'200 - OK',
     '200 - OK (header only)',
     '403 - You are not allowed to access this file',
     '401 - You are not authorized to access this file',
@@ -557,340 +785,40 @@ end; // start
 
 procedure ThttpSrv.stop();
 begin
-if assigned(sock) then
- begin
-  try
-    sock.Close()
-   except
-  end;
-//  try sock.multiListenSockets.clear() except end;
- end;
-end;
-
-procedure ThttpSrv.connected(Sender: TObject; Error: Word);
-begin
-  if error=0 then
-    ThttpConn.create(self, sender as Twsocket)
-end;
-
-procedure ThttpSrv.disconnected(Sender: TObject; Error: Word);
-begin notify(HE_CLOSE, NIL) end;
-
-constructor ThttpSrv.create();
-begin
-//sock := TWSocketServer.create(NIL);
-  sock := TWSocket.create(NIL);
-  sock.OnSessionAvailable := connected;
-  sock.OnSessionClosed := disconnected;
-  sock.OnBgException := bgexception;
-//  sock.MultiThreaded := True;
-
-  conns := TobjectList.create;
-  conns.OwnsObjects := FALSE;
-  offlines := TobjectList.create;
-  offlines.OwnsObjects:=FALSE;
-  q := TobjectList.create;
-  q.OwnsObjects := FALSE;
-  disconnecting := TobjectList.create;
-  disconnecting.OwnsObjects := FALSE;
-  limiters := TobjectList.create;
-  limiters.OwnsObjects := FALSE;
-  timer := Ttimer.create(NIL);
-  timer.OnTimer := timerEvent;
-  timer.Interval := 1000 div TIMER_HZ;
-  timer.Enabled := TRUE;
-  Port := '80';
-  autoFreeDisconnectedClients := TRUE;
-  persistentConnections := TRUE;
-end; // create
-
-destructor ThttpSrv.destroy();
-begin
-  freeAndNIL(timer);
-  stop();
-  disconnectAll(TRUE);
-  processDisconnecting();
-  freeAndNIL(sock);
-  freeConnList(conns);
-  freeAndNIL(conns);
-  freeAndNIL(disconnecting);
-  freeAndNIL(offlines);
-  freeAndNIL(q);
-  freeAndNIL(limiters);
-  inherited;
-end; // destroy
-
-procedure ThttpSrv.hertzEvent();
-var
-  i: integer;
-begin
-if now()-lastHertz < 1/(24*60*60) then exit;
-lastHertz:=now();
-calculateSpeed();
-for i:=0 to limiters.Count-1 do
-  try
-    with limiters[i] as TspeedLimiter do
-      availableBandwidth:=maxSpeed;
-  except end;
-end; // hertzEvent
-
-procedure ThttpSrv.processDisconnecting();
-var
-  c: ThttpConn;
-  i: integer;
-begin
-  if disconnecting.Count = 0 then
-    Exit;
-  i := disconnecting.Count-1;
-  while i >= 0 do
+  if assigned(sock) then
   begin
-    if disconnecting.Count > i then
-      begin
-       c := disconnecting[i] as ThttpConn;
-       dec(i);
-      end
-     else
-      begin
-       dec(i);
-       continue;
-      end;
-    if c.dontFree then
-      continue;
-    c.processInputBuffer(); // serve, till the end.
-    disconnecting.delete(i+1);
-    q.remove(c);
-    conns.remove(c);
-    offlines.add(c);
-    notify(HE_DISCONNECTED, c);
-  end;
-end; // processDisconnecting
-
-procedure ThttpSrv.timerEvent(sender: TObject);
-
-  procedure processPipelines();
-  var
-    i: integer;
-  begin
-    i := 0;
-    if conns.count > 0 then
-      while i < conns.count do
-       begin
-         try
-           with ThttpConn(conns[i]) do
-            if (httpState in [HCS_IDLE, HCS_DISCONNECTED]) and (buffer > '') then
-              processInputBuffer();
-          except
-         end;
-         Inc(i);
-       end;
-  end; // processPipelines
-
-  procedure processQ();
-  var
-    c: ThttpConn;
-    toQ: Tobjectlist;
-    i, chunkSize: integer;
-  begin
-    toQ := Tobjectlist.create;
     try
-      toQ.ownsObjects:=FALSE;
-      while q.count > 0 do
-        begin
-          c := NIL;
-          try
-            c := q.first() as ThttpConn; // got an AV here, had no better solution than adding a try statement www.rejetto.com/forum/?topic=6204
-            q.delete(0);
-           except
-          end;
-          if c = NIL then
-            continue;
-
-          try
-            chunkSize:= RDUtils.ifThen(c.paused, 0, MAXINT);
-            if not c.ignoreSpeedLimit then
-              for i:=0 to c.limiters.Count-1 do
-                with c.limiters[i] as TspeedLimiter do
-                  if availableBandwidth >= 0 then
-                    chunkSize := min(chunkSize, availableBandwidth);
-            if chunkSize <= 0 then
-              begin
-              toQ.add(c);
-              continue;
-              end;
-            if c.destroying or (c.httpState = HCS_DISCONNECTED)
-             or (c.sock = NIL) or (c.sock.State <> wsConnected) then
-              continue;
-            // serve the pending connection with a data chunk
-            chunkSize := c.sendNextChunk(chunkSize);
-            for i:=0 to c.limiters.Count-1 do
-              with c.limiters[i] as TspeedLimiter do
-                dec(availableBandwidth, chunkSize);
-           except
-          end;
-        end;
-      q.assign(toQ, laOR);
-     finally
-      toQ.Free
+      sock.Free;
+      sock := nil;
+    except
     end;
-  end; // processQ
-
-begin
-  hertzEvent();
-
-  lockTimerevent := TRUE;
-  try
-    processDisconnecting();
-    if autoFreeDisconnectedClients then
-      freeConnList(offlines);
-    processPipelines();
-    processQ();
-   finally
-    lockTimerevent := FALSE
-  end;
-end; // timerEvent
-
-procedure ThttpSrv.notify(ev: ThttpEvent; conn: ThttpConn);
-begin
-  if not assigned(onEvent) then
-    exit;
-  if assigned(conn) then
-  begin
-    inc(conn.lockCount);
-    conn.sock.pause();
-  end;
-// event handler shall not break our thing
-  try
-    onEvent(ev, conn);
-   finally
-    //if assigned(sock) then sock.resume();
-    if assigned(conn) then
-      begin
-      dec(conn.lockCount);
-      conn.sock.resume();
-      end;
   end;
 end;
 
-function Thttpsrv.getActive():boolean;
-begin
-  result := assigned(sock) and (sock.State=wsListening)
-end;
-
-procedure ThttpSrv.setActive(v:boolean);
-begin
-if v <> active then
-  if v then start() else stop()
-end; // setactive
-
-procedure ThttpSrv.freeConnList(l:TobjectList);
-begin
-while l.count > 0 do
-  with l.first() as ThttpConn do
-    try
-      try
-        l.delete(0)
-       finally
-        free
-      end
-     except
- {$IFNDEF FMX}
-      Application.ProcessMessages;
- {$ENDIF FMX}
-    end;
-end; // freeConnList
-
-procedure ThttpSrv.calculateSpeed();
-var
-  i: integer;
-begin
-P_speedOut:=0;
-P_speedIn:=0;
-i:=0;
-while i < conns.count do
-  begin
-  ThttpConn(conns[i]).calculateSpeed();
-  P_speedOut:=P_speedOut+ThttpConn(conns[i]).speedOut;
-  P_speedIn:=P_speedIn+ThttpConn(conns[i]).speedIn;
-  inc(i);
-  end;
-end; // calculateSpeed
-
-procedure ThttpSrv.setPort(v:string);
-begin
-if active then
-  raise Exception.Create(classname+': cannot change port while active');
-P_port:=v
-end; // setPort
-
-procedure ThttpSrv.disconnectAll(wait:boolean=FALSE);
-var
-  i: integer;
-  clone: Tlist;
-begin
-// on disconnection <conns> list changes. clone it for safer enumeration.
-  clone := Tlist.Create;
-  clone.Assign(conns);
-// cast disconnection
-  for i:=0 to clone.count-1 do
-    ThttpConn(clone[i]).disconnect();
-  if wait then
-    for i:=0 to clone.count-1 do
-      if conns.IndexOf(clone[i]) >= 0 then
-        ThttpConn(clone[i]).sock.WaitForClose();
-  clone.free;
-end; // disconnectAll
-
-procedure ThttpSrv.setAutoFree(v:boolean);
-begin P_autofree:=v end;
-
-procedure ThttpSrv.bgexception(Sender: TObject; E: Exception; var CanClose: Boolean);
-begin canClose:=FALSE end;
 
 ////////// CLIENT
 
-constructor ThttpConn.create(server: ThttpSrv; acceptingSock: Twsocket);
-var
-  i: integer;
+constructor ThttpConn.create(server: ThttpSrv; Ctxt: THttpServerRequestAbstract);
 begin
-// init socket
-  sock := Twsocket.create(NIL);
-//  sock.MultiThreaded := True;
-  if acceptingSock <> NIL then
-    sock.Dup(acceptingSock.accept())
-   else
-    sock.Dup(server.sock.accept());
-  sock.OnDataAvailable := dataavailable;
-  sock.OnSessionClosed := disconnected;
-  sock.onSendData := senddata;
-  sock.onDataSent := datasent;
-  sock.LineMode := FALSE;
-
   P_srv := server;
-
   httpRequest.headers := ThashedStringList.create;
   httpRequest.headers.nameValueSeparator := ':';
   limiters := TObjectList.create;
   limiters.ownsObjects:=FALSE;
-  P_address := sock.GetPeerAddr();
-  P_port := sock.GetPeerPort();
- {$IFDEF USE_IPv6}
-  P_v6 := sock.SocketFamily = sfIPv6;
- {$ELSE ~USE_IPv6}
-  P_v6 := false;
- {$ENDIF USE_IPv6}
+  P_address := UTF8ToString(Ctxt.InRemoteIP);
+  P_port := '';
+  P_v6 := False;
   httpState := HCS_IDLE;
   P_srv.conns.add(self);
   clearRequest();
   clearReply();
   QueryPerformanceCounter(lastSpeedTime);
 
-  i := sizeOf(P_sndBuf);
-  if WSocket_getsockopt(sock.HSocket, SOL_SOCKET, SO_SNDBUF, @P_sndBuf, i) <> NO_ERROR then
-    P_sndBuf:=0;
+  P_sndBuf := 0;
 
   server.notify(HE_CONNECTED, self);
   if reply.mode <> HRM_CLOSE then
-    exit;
+    Exit;
   dontFulFil := TRUE;
   disconnect();
 end;
@@ -900,16 +828,7 @@ begin
   if dontFree then
     raise exception.Create('still in use');
   P_destroying := TRUE;
-  if assigned(sock) then
-    try
-     {$IFDEF FPC}
-      sock.Shutdown(0);
-     {$ELSE FPC}
-      sock.Shutdown(SD_BOTH);
-     {$ENDIF FPC}
-      sock.WaitForClose();
-     except
-    end;
+
   if assigned(P_srv) and assigned(P_srv.offlines) then
     P_srv.offlines.remove(self);
 
@@ -923,7 +842,6 @@ begin
   freeAndNIL(httpRequest.headers);
   freeAndNIL(httpRequest.cookies);
   freeAndNil(stream);
-  freeAndNIL(sock);
   freeAndNIL(limiters);
   inherited;
 end; // destroy
@@ -1358,141 +1276,14 @@ case reply.mode of
   end;//case
 end; // processInputBuffer
 
-procedure ThttpConn.dataavailable(Sender: TObject; Error: Word);
-var
-  s: RawByteString;
-begin
-  if error <> 0 then
-    exit;
- {$IFDEF FPC}
-  s := sock.ReceiveStr();
- {$ELSE ~FPC}
-  s := sock.ReceiveStrA();
- {$ENDIF FPC}
-  inc(brecvd, length(s));
-  inc(P_srv.brecvd, length(s));
-  if (s = '') or dontFulFil then
-    exit;
-  if httpState = HCS_POSTING then
-    inc(postDataReceived, length(s));
-  if length(buffer)+length(s) > MAX_INPUT_BUFFER_LENGTH then
-  begin
-    disconnect();
-    try
-      sock.Abort()
-     except
-    end; // please, brutally
-    exit;
-  end;
-  buffer := buffer+s;
-  eventData := s;
-  notify(HE_GOT);
-  processInputBuffer();
-end; // dataavailable
 
-procedure ThttpConn.senddata(sender: Tobject; bytes: integer);
-begin
-  if bytes <= 0 then
-    exit;
-  inc(bsent, bytes);
-  inc(P_srv.bsent, bytes);
-  if httpState = HCS_REPLYING_BODY then
-    begin
-      inc(bsent_body, bytes);
-      inc(bsent_bodies, bytes);
-    end;
-  notify(HE_SENT);
-end; // senddata
 
-procedure ThttpConn.datasent(sender: Tobject; error: word);
-
-  function toBeQueued(): Boolean;
-  var
-    i: integer;
-  begin
-  result:=TRUE;
-  if paused then exit;
-  for i:=0 to limiters.Count-1 do
-    with limiters[i] as TspeedLimiter do
-      if maxSpeed < MAXINT then
-        exit;
-  result:=FALSE;
-  end; // toBeQueued
-
-var
-  notifyReplied: boolean;
-begin
-  if not (httpState in [HCS_REPLYING_HEADER, HCS_REPLYING_BODY]) then
-    exit;
-
-  if (httpState = HCS_REPLYING_HEADER) and (reply.mode <> HRM_REPLY_HEADER) then
-    begin // the header is never sent splitted, so we know that at this stage we already sent it all
-      httpState := HCS_REPLYING_BODY;
-    // set up a default body for errors with no body set
-      if ((stream = NIL) or (stream.size = 0)) and (reply.mode <> HRM_REPLY) then
-      begin
-        reply.bodyMode := RBM_TEXT;
-        reply.Body := HRM2BODY[reply.mode];
-        if reply.mode in [HRM_REDIRECT, HRM_MOVED] then
-          reply.bodyU := stringReplace(reply.bodyU, '%url%', reply.url, [rfReplaceAll]);
-        initInputStream();
-      end;
-    end;
-  if (httpState = HCS_REPLYING_BODY) and (bytesToSend > 0) then
-    begin
-      if toBeQueued() then
-        P_srv.q.add(self)
-       else
-        sendNextChunk();
-      exit;
-    end;
-  notifyReplied := FALSE;
-  if (httpState in [HCS_REPLYING_HEADER, HCS_REPLYING_BODY, HCS_DISCONNECTED])
-  and (bytesToSend = 0) then
-    begin
-      notifyReplied:=TRUE;
-      httpState := HCS_IDLE;
-    end;
-
-  if not persistent or not (reply.mode in [HRM_REPLY, HRM_REPLY_HEADER]) then
-    disconnect()
-   else
-    // we must check the socket state, because a disconnection could happen while
-    // this method is executing }
-    if sock.State <> wsClosed then
-      httpState := HCS_IDLE;
-  if notifyReplied then
-    begin
-      notify(HE_REPLIED);
-      if stream.position = stream.size then
-      begin
-        freeAndNil(stream); // free file handle
-        notify(HE_LAST_BYTE_DONE);
-      end;
-    end;
-  // once the event has been notified, we reset the current counter
-  if httpState = HCS_IDLE then
-    bsent_body:=0;
-
-  freeAndNil(stream);
-end; // datasent
 
 procedure ThttpConn.disconnect();
 begin
   if disconnecting then
-    exit;
+    Exit;
   disconnecting := TRUE;
-  if sock = NIL then
-    exit;
-  try
-   {$IFDEF FPC}
-    sock.Shutdown(0);
-   {$ELSE FPC}
-    sock.Shutdown(SD_BOTH);
-   {$ENDIF FPC}
-    sock.CloseDelayed();
-   except
-  end;
 end; // disconnect
 
 function ThttpConn.fullBodySize():int64;
@@ -1584,20 +1375,13 @@ begin
   setLength(buf, n);
   n := stream.read(buf[1], n);
   setLength(buf, n);
-  try
-    result := sock.SendStr(buf)
-   except
-  end; // the socket may be accidentally closed
+  result := n;
   if result < n then
     stream.Seek(n-result, soCurrent);
 end; // sendNextChunk
 
 procedure ThttpConn.socketSetNoDelay;
-var
-  i: Integer;
 begin
-  i := -1;
-  WSocket_setsockopt(Sock.HSocket, IPPROTO_TCP, TCP_NODELAY, @i, sizeOf(i));
 end;
 
 function ThttpConn.getBytesToSend():int64;
@@ -1622,10 +1406,7 @@ begin
     reply.headerU := h;
   reply.headerAdd(reply.fAdditionalHeaders);
 
-  try
-     sock.sendStr(reply.header+CRLFA);
-   except
-  end;
+  // handled by OnRequest
 end; // sendHeader
 
 procedure ThttpConn.sendheader(const h: RawByteString='');
@@ -1635,10 +1416,7 @@ begin
     reply.header := h;
   reply.headerAdd(reply.fAdditionalHeaders);
 
-  try
-     sock.sendStr(reply.header+CRLFA);
-   except
-  end;
+  // handled by OnRequest
 end; // sendHeader
 
 function replycode2reason(code:integer): RawByteString;
@@ -1778,24 +1556,27 @@ begin result:=lockCount > 0 end;
 procedure ThttpConn.setSndbuf(v: Integer);
 begin
   if P_sndBuf = v then
-    exit;
+    Exit;
   P_sndBuf := v;
-  WSocket_setsockopt(sock.HSocket, SOL_SOCKET , SO_SNDBUF, @v, SizeOf(v));
 end;
 
 procedure ThttpConn.setICSBufSize(v: Integer);
 begin
-  Sock.BufSize := v;
 end;
 
 function ThttpConn.getICSBufSize: Integer;
 begin
-  Result := Sock.BufSize;
+  Result := 0;
 end;
 
 function ThttpConn.getIsDisconnected: Boolean;
 begin
   Result := Self.httpState = HCS_DISCONNECTED;
+end;
+
+function ThttpConn.getIsConnected: Boolean;
+begin
+  Result := not getIsDisconnected;
 end;
 
 function ThttpConn.getIsSendingStream: Boolean;
