@@ -78,7 +78,7 @@ object mainFrm: TmainFrm
       OnClick = menuBtnClick
     end
     object portBtn: TToolButton
-      Left = 91
+      Left = 89
       Top = 2
       AutoSize = True
       Caption = 'Port: any'
@@ -86,23 +86,23 @@ object mainFrm: TmainFrm
       OnClick = portBtnClick
     end
     object Sep2TBtn: TToolButton
-      Left = 182
-      Height = 8
+      Left = 180
+      Height = 28
       Top = 2
       Caption = 'Sep2'
       ImageIndex = 15
       Style = tbsSeparator
     end
     object Sep3TBtn: TToolButton
-      Left = 192
-      Height = 8
+      Left = 188
+      Height = 28
       Top = 2
       Caption = 'Sep3'
       ImageIndex = 16
       Style = tbsSeparator
     end
     object modeBtn: TToolButton
-      Left = 202
+      Left = 196
       Hint = 'Click to switch'#13#10'F5 on keyboard'
       Top = 2
       AutoSize = True
@@ -113,7 +113,7 @@ object mainFrm: TmainFrm
     end
     object SepTB1: TToolButton
       Left = 81
-      Height = 8
+      Height = 28
       Top = 2
       Caption = 'SepTB1'
       ImageIndex = 13
@@ -121,7 +121,7 @@ object mainFrm: TmainFrm
       Wrap = True
     end
     object startBtn: TToolButton
-      Left = 378
+      Left = 372
       Hint = 'Click to switch ON'#13'F4 on keyboard'
       Top = 2
       AutoSize = True
@@ -132,7 +132,7 @@ object mainFrm: TmainFrm
       OnClick = startBtnClick
     end
     object abortBtn: TToolButton
-      Left = 716
+      Left = 710
       Top = 2
       AutoSize = True
       Caption = 'Abort file addition'
@@ -141,7 +141,7 @@ object mainFrm: TmainFrm
       OnClick = abortBtnClick
     end
     object restoreCfgBtn: TToolButton
-      Left = 558
+      Left = 552
       Top = 2
       Caption = 'Restore my options'
       ImageIndex = 34
@@ -149,7 +149,7 @@ object mainFrm: TmainFrm
       OnClick = restoreCfgBtnClick
     end
     object updateBtn: TToolButton
-      Left = 858
+      Left = 852
       Top = 2
       AutoSize = True
       Caption = 'Update now'
@@ -263,7 +263,7 @@ object mainFrm: TmainFrm
           Left = 0
           Height = 29
           Top = 0
-          Width = 359
+          Width = 360
           Align = alClient
           BevelOuter = bvNone
           Caption = 'Log'
@@ -271,15 +271,15 @@ object mainFrm: TmainFrm
           TabOrder = 0
         end
         object logToolbar: TPanel
-          Left = 359
+          Left = 360
           Height = 29
           Top = 0
-          Width = 292
+          Width = 291
           Align = alRight
           AutoSize = True
           BevelOuter = bvNone
           ClientHeight = 29
-          ClientWidth = 292
+          ClientWidth = 291
           ParentBackground = False
           TabOrder = 1
           object collapsedPnl: TPanel
@@ -329,16 +329,16 @@ object mainFrm: TmainFrm
             Left = 23
             Height = 29
             Top = 0
-            Width = 269
+            Width = 268
             Align = alRight
             AutoSize = True
             BevelOuter = bvNone
             ClientHeight = 29
-            ClientWidth = 269
+            ClientWidth = 268
             ParentBackground = False
             TabOrder = 1
             object openFilteredLog: TSpeedButton
-              Left = 237
+              Left = 236
               Height = 29
               Hint = 'Copy to editor only lines matched by the search pattern'
               Top = 0
@@ -403,7 +403,7 @@ object mainFrm: TmainFrm
               OnClick = openLogBtnClick
             end
             object openLogBtn: TSpeedButton
-              Left = 205
+              Left = 204
               Height = 29
               Hint = 'Copy to editor'
               Top = 0
@@ -491,16 +491,16 @@ object mainFrm: TmainFrm
               Left = 28
               Height = 29
               Top = 0
-              Width = 177
+              Width = 176
               Align = alRight
               AutoSize = True
               BevelOuter = bvNone
               ClientHeight = 29
-              ClientWidth = 177
+              ClientWidth = 176
               ParentBackground = False
               TabOrder = 0
               object logSearchBox: TLabeledEdit
-                Left = 48
+                Left = 47
                 Height = 26
                 Hint = 'Wildcards allowed'
                 Top = 1
@@ -517,7 +517,7 @@ object mainFrm: TmainFrm
                 OnKeyPress = logSearchBoxKeyPress
               end
               object logUpDown: TUpDown
-                Left = -28
+                Left = -29
                 Height = 30
                 Top = 0
                 Width = 20

@@ -1,0 +1,92 @@
+﻿<html>
+<head><style>
+body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }
+#log {
+  overflow-y: auto; 
+  font-family: Consolas, monospace;
+  font-size: 9pt;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-msg {
+  margin: 0 0 2px 0;
+  line-height: 1.25;
+}
+
+.time {
+  color: red;
+  font-weight: bold;
+}
+
+.addr {
+  color: #008000;
+}
+
+.msg {
+}
+
+.cont {
+  color: blue;
+  margin-left: 1em;
+  white-space: pre-wrap;
+}' +
+'</style>
+<script type="module">
+  const logBody = document.$("#log");
+  const MAX_LINES = 1000; // аналог logMaxLines
+
+  // Экранирование
+  function esc(s) {
+    if (!s) return "";
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // Main function to exec from Pascal
+  globalThis.addLogEvent = function(data) {
+    // data can come as string JSON or as object
+    if (typeof data === "string") {
+      try { data = JSON.parse(data); } catch(e) { return; }
+    }
+
+    const timePart = data.ts 
+      ? `<span class="time">${esc(data.ts)}</span> ` 
+      : "";
+
+    const addrPart = data.addr 
+      ? `<span class="addr">${esc(data.addr)}</span> ` 
+      : "";
+
+    const colorStyle = data.color 
+      ? ` style="color:${esc(data.color)}"` 
+      : "";
+
+    const msgPart = `<span class="msg"${colorStyle}>${esc(data.msg)}</span>`;
+
+    const contPart = data.cont 
+      ? `<div class="cont">${esc(data.cont)}</div>` 
+      : "";
+
+    const html = `<div class="log-msg">${timePart}${addrPart}${msgPart}${contPart}</div>`;
+
+    // Quick addition
+    logBody.insertAdjacentHTML("beforeend", html);
+
+    // Scroll
+    const last = logBody.lastElementChild;
+    if (last) last.scrollIntoView({behavior: "smooth", block: "end"});
+
+    // Trim elements
+    while (logBody.children.length > MAX_LINES) {
+      logBody.firstElementChild.remove();
+    }
+  };
+</script>
+</head>
+<body id="log"></body>
+</html>

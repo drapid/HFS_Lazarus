@@ -1808,7 +1808,8 @@ begin
   onUpdateLogTimer;
 
   add2logData(ld, lines, cd, clr);
-  add2logInt(ld);
+  //add2logInt(ld);
+  add2logInt2(ld);
 
 end; // add2log
 
@@ -1845,7 +1846,8 @@ begin
   begin
       for i := 0 to High(datas) do
       begin
-        add2logInt(datas[i], If_(i = High(datas), doScroll));
+        //add2logInt(datas[i], If_(i = High(datas), doScroll));
+        add2logInt2(datas[i]);
       end;
   end;
 end;
@@ -6924,55 +6926,20 @@ finally queryingClose:=FALSE end;
 end;
 
 procedure TmainFrm.FormCreate(Sender: TObject);
-const
-  BaseHTML =
-    '<html><head><style>' +
-    'body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }' +
-//    '.log-msg { border-bottom: 1px dashed #eee; padding: 3px 0; }' +
-//    '.time { color: #888; font-family: monospace; margin-right: 6px; }' +
-    ' #log { '+
-    '  overflow-y: auto; '+
-    '  font-family: Consolas, monospace;'+
-    '  font-size: 9pt;'+
-    '  white-space: pre-wrap;'+
-    '  word-break: break-all;'+
-    '}'+
-
-    '.log-msg {'+
-    '  margin: 0 0 2px 0;'+
-    '  line-height: 1.25;'+
-    '}'+
-
-    '.time {'+
-    '  color: red;'+
-    '  font-weight: bold;'+
-    '}'+
-
-    '.addr {'+
-    '  color: #008000;'+
-    '}'+
-
-    '.msg {'+
-    '}'+
-
-    '.cont {'+
-    '  color: blue;'+
-    '  margin-left: 1em;'+
-    '  white-space: pre-wrap;'+
-    '}' +
-'</style></head><body id="log"></body></html>';
+var
+  baseHTML: UnicodeString;
 begin
   FIsBrowserReady := False;
+
+  baseHTML := UTF8ToStr(getResText('log'));
 
   LogBrowser := TSciter.Create(logPnl);
   LogBrowser.Parent := logPnl;
   LogBrowser.Align := alClient;
-//  LogBrowser.OnAfterCreated := WVBrowser1AfterCreated;
-  // Указываем пустую начальную страницу
+  LogBrowser.PopupMenu := logmenu;
+  // Set empty start page
   LogBrowser.SetHomeURL('about:blank');
-  // Запускаем создание браузера, привязывая его к нашему компоненту-контейнеру
-//  LogBrowser.paCreateBrowser(WVPanel.Handle);
-// Загружаем базовый HTML-каркас лога в память движка
+// Load base HTML into sciter
   LogBrowser.LoadHtml(BaseHTML, 'about:blank');
   FIsBrowserReady := True;
 

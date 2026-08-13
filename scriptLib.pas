@@ -1570,6 +1570,12 @@ var
   procedure canArchive(f:Tfile);
   begin trueIf(assigned(f) and f.hasRecursive(FA_ARCHIVABLE) or (f = NIL) and md.archiveAvailable) end;
 
+  procedure hasThumbnail(f: TFile);
+  begin
+    trueIf(assigned(f) and (f.hasThumb))
+  end;
+
+
   procedure actionAllowed(action:TfileAction);
   var
     f: Tfile;
@@ -2440,6 +2446,7 @@ begin
           else if p = 'can access' then actionAllowed(FA_ACCESS)
           else if p = 'can archive' then canArchive(md.folder)
           else if p = 'can archive item' then canArchive(md.f)
+          else if p = 'has thumbnail' then hasThumbnail(md.f)
           else if p = 'url' then getUri()
           else if p = 'stop spiders' then
                                {$IFDEF FMX}

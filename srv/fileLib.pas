@@ -1609,6 +1609,7 @@ function Tfile.getHasThumb: Boolean;
 var
   e: String;
 begin
+ // ToDo Add support for folders
   if not isFile then
     Result := false;
   e := ExtractFileExt(resource);
@@ -1627,6 +1628,7 @@ var
   bmp: TBitmap;
 begin
   Result := False;
+ // ToDo Add support for folders
   if getHasThumb then
     begin
       ext := ExtractFileExt(resource);

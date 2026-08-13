@@ -12,3 +12,4 @@ jquery ZTEXT jquery.min.js.gz
 //numbers IMAGE numbers.png
 //numbers32 IMAGE numbers32.png
 RDpubkey TEXT RapidD.public
+log TEXT log.html
