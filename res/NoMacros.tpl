@@ -9,6 +9,7 @@ a{text-decoration:none;font-size:16pt;color:#00D;font-weight:400} a:visited{colo
 	<link rel="stylesheet" href="/~icons.css" type="text/css">
 	<link rel="stylesheet" href="/~nomacros_style.css" type="text/css">
 	<script type="text/javascript" src="/~nomacros_lib.js"></script>
+	<script type="text/javascript" src="/~music.js"></script>
 </head>
 <body>
 	<div id="wrapper">
@@ -116,8 +117,9 @@ $domReady(()=>{
 <div>%files%</div></div>
 </body>
 
-<script>function music(){ //C DJ BSD2License
-var e=1,n=new Audio,o=[[]],c=0,r=[];document.querySelectorAll("a[href]").forEach(function(t,e){var n;[".mp3",".ogg",".m4a",".wma",".aac","flac",".Mp3",".MP3",".OGG",".M4A",".WMA",".AAC","FLAC"].indexOf(t.getAttribute("href").slice(-4))+1&&(o[0].push(t.getAttribute("href")),t.addEventListener("click",function(e){e.preventDefault(),i(t.getAttribute("href"))}),(n=document.querySelector('input[value="'+t.getAttribute("href")+'"]'))&&(n.checked=!0))}),"?shuffle"==location.search&&(e=!e),e&&(o[0]=o[0].sort(function(e,t){return.5-Math.random()}));var t,u=document.querySelector("#actions")||document.querySelector("#menu-bar")||document.querySelector("body"),a=document.createElement("button");function i(e){e.match(/m3u8?$/)?fetch(e).then(function(e){e.text().then(function(e){i(e.match(/^(?!#)(?!\s).*$/gm).map(encodeURI)[0])})}):(n.src=e,n.play(),document.title=decodeURI(e))}a.textContent="\u25BA",a.setAttribute("class","play"),a.onclick=function(){n.paused?(n.src||(n.src=(e?o[0]:t)[0]),n.play()):n.pause()},a.oncontextmenu=function(e){e.preventDefault(),n.onended()},o[0].length&&!document.querySelector("button.play")&&u.appendChild(a),n.onended=function(){var e=n.getAttribute("src");do{e=o[c][o[c].indexOf(e)+1];var t=document.querySelector('input[value="'+e+'"]')}while(t&&!t.checked);e?i(e):c?(c--,n.src=r[c],n.onended()):i(o[0][0])},n.onpause=function(){document.querySelector("button.play").textContent="\u25BA"},n.onplay=function(){document.querySelector("button.play").textContent="\u2759 \u2759"},o[0].length&&(window.onbeforeunload=function(e){localStorage.last=n.getAttribute("src")+"#t="+n.currentTime},t=localStorage.last.split("#t="),n.preload="none",n.src=(e?o[0]:t)[0],(t=1e3*location.search.slice(1))&&setTimeout(function(){document.querySelector("button.play").click()},t)),n.onerror=function(){n.onended()},"mediaSession"in navigator&&navigator.mediaSession.setActionHandler("nexttrack",function(){n.onended()})}document.querySelector("main")||music();</script>
+<script>
+  music();
+</script>
 </html>
 
 [files]

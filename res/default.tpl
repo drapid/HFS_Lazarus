@@ -39,6 +39,9 @@ def 3.0
 	}
 	</script>
 	<script type="text/javascript" src="/~lib.js"></script>
+	<script type="text/javascript" src="/~music.js"></script>
+	<script type="text/javascript" src="/~preview.js"></script>
+	<script type="text/javascript" src="/~videoplayer.js"></script>
 
 []
 {.$common-head.}
@@ -56,7 +59,10 @@ def 3.0
 	</div>
 </body>
 <script>
-document.querySelector("main") || music();
+  music();
+  initPreview();
+  videoPlayer();
+document.querySelector("main");
 </script>
 </html>
 
@@ -400,19 +406,19 @@ z-index:1; /* without this .item-menu will be over*/ }
 #menu-bar { padding:0.2em 0 }
 
 @media (min-width: 50em) {
-#toggleTs { display: none }
+  #toggleTs { display: none }
 }
 @media (max-width: 50em) {
-#menu-panel button { padding: .4em .6em; }
-.additional-panel button span,
-#menu-bar button span { display:none } /* icons only */
-#menu-bar i { font-size:120%; } /* bigger icons */
-#menu-bar button { width: 3em; max-width:10.7vw; padding: .4em 0; }
-.hideTs .item-ts { display:none }
+  #menu-panel button { padding: .4em .6em; }
+  .additional-panel button span,
+  #menu-bar button span { display:none } /* icons only */
+  #menu-bar i { font-size:120%; } /* bigger icons */
+  #menu-bar button { width: 3em; max-width:10.7vw; padding: .4em 0; }
+  .hideTs .item-ts { display:none }
 }
 
 #upload-panel { font-size: 88%;}
-#upload-progress { margin-top:.5em; display:none; }
+#upload-progress { margin-top:.5em; display:block; }
 #upload-progress progress { width:10em; position:relative; top:.1em; }
 #progress-text { position: absolute; color: #000; font-size: 80%; margin-left:.5em; z-index:1; }
 #upload-results a { color:#b0c2d4; }
@@ -421,6 +427,75 @@ z-index:1; /* without this .item-menu will be over*/ }
 #upload-results { max-height: calc(100vh - 11em); overflow: auto;}
 #upload-panel>button { margin: auto; display: block; margin-top:.8em;} /* center it*/
 
+.archive-items[collapsed] { display:none }
+.archive-items[expanded] { display:block }
+div.archive-list-item { width:90%;display:list-item }
+div.archive-item { display:inline; width:90% }
+/* Container for tabs-buttons */
+.archive-tabs-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.archive-tab-btn {
+  padding: 2px 8px;
+  cursor: pointer;
+  font-weight: normal;
+  text-decoration: none;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.archive-tab-btn.active {
+  font-weight: bold;
+  text-decoration: underline;
+  background-color: #e0e0e0;
+}
+
+.archive-page-menu {
+  display: none;
+}
+
+.archive-page-menu.active {
+  display: block;
+}
+
+.image-link {
+    color: #0066cc;
+    text-decoration: none;
+    position: relative; /* need it for correct postions of popup block */
+}
+
+/* preview container*/
+.preview-wrapper {
+    position: absolute;
+    top: 100%;          /* под ссылкой */
+    left: 0;
+    transform: translateY(4px);
+    z-index: 9999;
+    pointer-events: none;
+    display: none;          /* hidden by default */
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px;
+    border-radius: 3px;
+}
+
+.preview-wrapper img {
+    display: block;
+    max-width: 200px;
+    max-height: 150px;
+    width: auto;
+    height: auto;
+}
+
+.no-wrap-text {
+   white-space: nowrap;
+  }
 [nomacros_style.css|public|no log|cache]
 .l{display:inline-block;width:60%}
 .t{float:right;color:gray}
@@ -551,10 +626,15 @@ z-index:1; /* without this .item-menu will be over*/ }
 [file=folder=link|private]
 <div class='item item-type-%item-type% {.if|{.get|can access.}||cannot-access.} {.if|{.get|can archive item.}|can-archive.} {.if|{.get|has thumbnail.}|has-thumbnail.}'>
 	<div class="item-link">
-		<a href="%item-url%">
+		<a href="%item-url%" {.if|{.get|has thumbnail.}|class="image-link".} {.if|{.get|is archive.}|class="archive-link".}>
 			<img src="%item-icon%" />
 			%item-name%
 		</a>
+{.if|{.get|is archive.}|
+		<a href="#" class="archive-spoiler">
+                   >
+		</a>
+.}
 	</div>
 	<div class='item-props'>
 		<span class="item-ts"><i class='fa fa-clock'></i> {.cut||-3|%item-modified%.}</span>
@@ -983,6 +1063,828 @@ function showLoading(show){
 	return ret
 }
 
+[music.js|public|no log|cache]
+function music() {
+    let shuffle = location.search === '?shuffle';
+    let audio = new Audio();
+    let links = [];
+    let currentIndex = 0;
+    
+    // Стили для панели управления
+    const styles = `
+        .music-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #ddd;
+            border-radius: 5px;
+            margin: 0 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #777;
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+        
+        .time {
+            font-size: 0.9em;
+        }
+    `;
+
+    // Adding style into document
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = styles;
+    document.head.appendChild(style);
+
+    // Collecting all links to media
+    document.querySelectorAll("a[href]").forEach(function(link) {
+        let href = link.getAttribute('href');
+        let ext = href.toLowerCase().split('.').pop();
+        
+        if (['mp3', 'ogg', 'm4a', 'wma', 'aac', 'flac'].includes(ext)) {
+            links.push(href);
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                playTrack(href);
+            });
+        }
+    });
+
+    // Creating control panel
+    let controlContainer = document.querySelector("#actions") || 
+    document.querySelector("#menu-bar") || 
+    document.body;
+
+    let controlPanel = document.createElement('div');
+    controlPanel.classList.add('music-control');
+
+    // Play button
+    let playButton = document.createElement('button');
+    playButton.textContent = '▶';
+    playButton.classList.add('play');
+    playButton.classList.add('no-wrap-text');
+
+    // Progress bar
+    let progressBar = document.createElement('div');
+    progressBar.classList.add('progress-bar');
+
+    let progressFill = document.createElement('div');
+    progressFill.classList.add('progress-fill');
+    progressBar.appendChild(progressFill);
+
+    // current time
+    let currentTime = document.createElement('span');
+    currentTime.classList.add('time');
+
+    // Total time
+    let totalTime = document.createElement('span');
+    totalTime.classList.add('time');
+
+    // Addeding elements into panel
+    controlPanel.appendChild(playButton);
+    controlPanel.appendChild(progressBar);
+    controlPanel.appendChild(currentTime);
+    controlPanel.appendChild(totalTime);
+
+    if (links.length > 0) {
+        controlContainer.appendChild(controlPanel);
+    }
+
+    // Обработчики событий
+    audio.addEventListener('timeupdate', function() {
+        let percent = (100 / audio.duration) * audio.currentTime;
+        progressFill.style.width = percent + '%';
+        
+        currentTime.textContent = formatTime(audio.currentTime);
+        totalTime.textContent = formatTime(audio.duration);
+    });
+
+    progressBar.addEventListener('click', function(e) {
+        let clickX = e.offsetX;
+        let progressWidth = progressBar.getBoundingClientRect().width;
+        let seekTo = (clickX * audio.duration) / progressWidth;
+        audio.currentTime = seekTo;
+    });
+
+    playButton.onclick = function() {
+        if (audio.paused) {
+            if (!(audio.src == audio.src) || !audio.src) {
+                // Не запускаем воспроизведение сразу
+                // Просто устанавливаем текущий трек
+                audio.src = shuffle ? 
+                links[Math.floor(Math.random() * links.length)] : 
+                links[currentIndex];
+            }
+            audio.play();
+            this.textContent = '❚ ❚';
+        } else {
+            audio.pause();
+            this.textContent = '▶';
+        }
+    };
+
+    audio.addEventListener('ended', function() {
+        currentIndex = (currentIndex + 1) % links.length;
+        if (!isNaN(currentIndex)){
+            playTrack(links[currentIndex]);
+        }
+    });
+
+    audio.addEventListener('error', function() {
+        console.error('Error playing:', audio.error);
+        let lPrevIndex = currentIndex;
+        currentIndex = (currentIndex + 1) % links.length;
+        if (!isNaN(currentIndex) && lPrevIndex != currentIndex){
+            playTrack(links[currentIndex]);
+        }
+    });
+
+    function playTrack(url) {
+        if (url == url){
+            try {
+                audio.src = url;
+                audio.load();
+                audio.play();
+                document.title = decodeURI(url);
+            } catch (error) {
+                console.error('Error loading track:', error);
+            }
+        }
+    }
+
+    function formatTime(seconds) {
+        let min = Math.floor(seconds / 60);
+        let sec = Math.floor(seconds % 60);
+        return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // Restore last state
+    if (localStorage.getItem('last')) {
+        let lastState = localStorage.getItem('last').split('#t=');
+        audio.src = lastState[0];
+        audio.currentTime = parseFloat(lastState[1]);
+    }
+
+    // Save state
+    window.addEventListener('beforeunload', function() {
+        localStorage.setItem('last', audio.src + '#t=' + audio.currentTime);
+    });
+
+    // Support Media Session API - добавляем все треки в список проигрывания
+    if ('mediaSession' in navigator) {
+        // Create tracklist for Media Session
+        const mediaTracks = links.map((url, index) => ({
+            title: decodeURI(url).split('/').pop(),
+            artist: 'Unknown Artist',
+            album: 'Unknown Album',
+            artwork: [
+                { src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="gray"/></svg>', sizes: '100x100', type: 'image/svg+xml' }
+            ],
+            duration: 0 // Будет заполнено при загрузке
+        }));
+
+        // Устанавливаем метаданные для текущего трека
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'Loading...',
+            artist: 'Unknown Artist',
+            album: 'Unknown Album',
+            artwork: [
+                { src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="gray"/></svg>', sizes: '100x100', type: 'image/svg+xml' }
+            ]
+        });
+
+        // Устанавливаем обработчики для Media Session
+        navigator.mediaSession.setActionHandler('play', function() {
+            if (audio.paused) {
+                audio.play();
+                playButton.textContent = '❚ ❚';
+            }
+        });
+
+        navigator.mediaSession.setActionHandler('pause', function() {
+            if (!audio.paused) {
+                audio.pause();
+                playButton.textContent = '▶';
+            }
+        });
+
+        navigator.mediaSession.setActionHandler('nexttrack', function() {
+            currentIndex = (currentIndex + 1) % links.length;
+            if (!isNaN(currentIndex)) {
+                playTrack(links[currentIndex]);
+                // Обновляем метаданные
+                updateMediaSessionMetadata(links[currentIndex]);
+            }
+        });
+
+        navigator.mediaSession.setActionHandler('previoustrack', function() {
+            currentIndex = (currentIndex - 1 + links.length) % links.length;
+            if (!isNaN(currentIndex)) {
+                playTrack(links[currentIndex]);
+                // Обновляем метаданные
+                updateMediaSessionMetadata(links[currentIndex]);
+            }
+        });
+
+        navigator.mediaSession.setActionHandler('seekto', function(event) {
+            if (event.seekTime !== undefined) {
+                audio.currentTime = event.seekTime;
+            }
+        });
+
+        // Функция обновления метаданных Media Session
+        function updateMediaSessionMetadata(url) {
+            const trackIndex = links.indexOf(url);
+            if (trackIndex !== -1) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: decodeURI(url).split('/').pop(),
+                    artist: 'Unknown Artist',
+                    album: 'Unknown Album',
+                    artwork: [
+                        { src: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="gray"/></svg>', sizes: '100x100', type: 'image/svg+xml' }
+                    ]
+                });
+            }
+        }
+
+        // Добавляем все треки в список проигрывания
+        if (links.length > 0) {
+            // Для демонстрации - можно расширить для полной поддержки
+            // В реальном случае нужно добавить больше функциональности
+        }
+    }
+}
+
+[videoplayer.js|public|no log|cache]
+function videoPlayer() {
+    let videoLinks = [];
+    let currentVideoIndex = 0;
+    
+    // Стили для видео плеера
+    const styles = `
+        .video-player-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            height: 280px;
+            background: rgba(0, 0, 0, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+        
+        .video-player-header {
+            padding: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #444;
+            color: white;
+            font-size: 14px;
+            min-height: 30px;
+        }
+        
+        .video-player-title {
+            color: white;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+            margin-right: 10px;
+        }
+        
+        .video-player-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid #666;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .video-player-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .video-player-video {
+            width: 100%;
+            height: calc(100% - 80px);
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            flex: 1;
+        }
+        
+        .video-player-video video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .video-player-placeholder {
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .video-player-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px;
+            background: rgba(30, 30, 30, 0.9);
+            border-top: 1px solid #444;
+            flex-wrap: wrap;
+            min-height: 50px;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .video-player-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #666;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            min-width: 30px;
+        }
+        
+        .video-player-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #fff;
+        }
+        
+        .video-player-progress {
+            flex: 1;
+            height: 8px;
+            background: #444;
+            border-radius: 4px;
+            margin: 0 5px;
+            cursor: pointer;
+            position: relative;
+            min-width: 100px;
+            flex-shrink: 1;
+        }
+        
+        .video-player-progress-bar {
+            height: 100%;
+            background: #007bff;
+            border-radius: 4px;
+            width: 0%;
+        }
+        
+        .video-player-time {
+            color: white;
+            font-size: 12px;
+            min-width: 60px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin: 0 5px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .video-player-time-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .video-player-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+        }
+        
+        .video-link {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .video-link::after {
+            content: "▶";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            opacity: 0.7;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    `;
+
+    // Добавляем стили в документ
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.innerHTML = styles;
+    document.head.appendChild(style);
+
+    // Создаем контейнеры для видео плеера
+    let overlay = document.createElement('div');
+    overlay.className = 'video-player-overlay';
+    document.body.appendChild(overlay);
+
+    let playerContainer = document.createElement('div');
+    playerContainer.className = 'video-player-container';
+    document.body.appendChild(playerContainer);
+
+    // Создаем элементы плеера
+    let playerHeader = document.createElement('div');
+    playerHeader.className = 'video-player-header';
+    
+    let playerTitle = document.createElement('div');
+    playerTitle.className = 'video-player-title';
+    
+    let closeBtn = document.createElement('button');
+    closeBtn.className = 'video-player-close';
+    closeBtn.innerHTML = '×';
+    
+    playerHeader.appendChild(playerTitle);
+    playerHeader.appendChild(closeBtn);
+    
+    let playerVideo = document.createElement('div');
+    playerVideo.className = 'video-player-video';
+    
+    let playerControls = document.createElement('div');
+    playerControls.className = 'video-player-controls';
+    
+    let playBtn = document.createElement('button');
+    playBtn.className = 'video-player-btn';
+    playBtn.innerHTML = '▶';
+    
+    let prevBtn = document.createElement('button');
+    prevBtn.className = 'video-player-btn';
+    prevBtn.innerHTML = '⏮';
+    
+    let nextBtn = document.createElement('button');
+    nextBtn.className = 'video-player-btn';
+    nextBtn.innerHTML = '⏭';
+    
+    let progressBar = document.createElement('div');
+    progressBar.className = 'video-player-progress';
+    
+    let progressBarFill = document.createElement('div');
+    progressBarFill.className = 'video-player-progress-bar';
+    progressBar.appendChild(progressBarFill);
+    
+    let timeContainer = document.createElement('div');
+    timeContainer.className = 'video-player-time-container';
+    
+    let currentTime = document.createElement('span');
+    currentTime.className = 'video-player-time';
+    currentTime.textContent = '00:00';
+    
+    let totalTime = document.createElement('span');
+    totalTime.className = 'video-player-time';
+    totalTime.textContent = '00:00';
+    
+    timeContainer.appendChild(currentTime);
+    timeContainer.appendChild(totalTime);
+    
+    playerControls.appendChild(prevBtn);
+    playerControls.appendChild(playBtn);
+    playerControls.appendChild(nextBtn);
+    playerControls.appendChild(progressBar);
+    playerControls.appendChild(timeContainer);
+    
+    playerContainer.appendChild(playerHeader);
+    playerContainer.appendChild(playerVideo);
+    playerContainer.appendChild(playerControls);
+
+    // Собираем все ссылки на видео
+    document.querySelectorAll("a[href]").forEach(function(link) {
+        let href = link.getAttribute('href');
+        let ext = href.toLowerCase().split('.').pop();
+        
+        if (['mp4', 'webm', 'ogg', 'avi', 'mov', 'wmv', 'flv'].includes(ext)) {
+            videoLinks.push({
+                url: href,
+                element: link
+            });
+            
+            // Добавляем обработчик клика на ссылку
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                openVideo(href);
+            });
+            
+            // Добавляем класс для стилизации ссылок
+            link.classList.add('video-link');
+        }
+    });
+
+    // Переменные для управления плеером
+    let currentVideo = null;
+    let videoElement = null;
+    let isPlaying = false;
+    let playerVisible = false;
+
+    // Функция открытия видео
+    function openVideo(url) {
+        if (!playerVisible) {
+            playerContainer.style.display = 'flex';
+            overlay.style.display = 'block';
+            playerVisible = true;
+        }
+        
+        // Создаем или обновляем видео элемент
+        if (videoElement) {
+            playerVideo.removeChild(videoElement);
+        }
+        
+        videoElement = document.createElement('video');
+        videoElement.src = url;
+        videoElement.controls = false;
+        videoElement.preload = 'metadata';
+        videoElement.style.width = '100%';
+        videoElement.style.height = '100%';
+        
+        playerVideo.appendChild(videoElement);
+        playerTitle.textContent = decodeURI(url).split('/').pop();
+        
+        // Обновляем индекс текущего видео
+        currentVideoIndex = videoLinks.findIndex(link => link.url === url);
+        
+        // Сбрасываем состояние
+        isPlaying = false;
+        playBtn.innerHTML = '▶';
+        currentTime.textContent = '00:00';
+        totalTime.textContent = '00:00';
+        progressBarFill.style.width = '0%';
+        
+        // Слушатели событий для видео
+        videoElement.addEventListener('loadedmetadata', function() {
+            totalTime.textContent = formatTime(videoElement.duration);
+        });
+        
+        videoElement.addEventListener('timeupdate', function() {
+            if (videoElement.duration) {
+                let percent = (videoElement.currentTime / videoElement.duration) * 100;
+                progressBarFill.style.width = percent + '%';
+                currentTime.textContent = formatTime(videoElement.currentTime);
+            }
+        });
+        
+        videoElement.addEventListener('ended', function() {
+            playBtn.innerHTML = '▶';
+            isPlaying = false;
+        });
+        
+        videoElement.addEventListener('error', function() {
+            console.error('Error loading video:', url);
+            playerVideo.innerHTML = '<div class="video-player-placeholder">Error loading video</div>';
+        });
+        
+        currentVideo = url;
+    }
+
+    // Обработчики событий для плеера
+    playBtn.onclick = function() {
+        if (videoElement) {
+            if (isPlaying) {
+                videoElement.pause();
+                playBtn.innerHTML = '▶';
+                isPlaying = false;
+            } else {
+                videoElement.play();
+                playBtn.innerHTML = '❚ ❚';
+                isPlaying = true;
+            }
+        }
+    };
+
+    prevBtn.onclick = function() {
+        if (videoLinks.length > 0) {
+            currentVideoIndex = (currentVideoIndex - 1 + videoLinks.length) % videoLinks.length;
+            openVideo(videoLinks[currentVideoIndex].url);
+        }
+    };
+
+    nextBtn.onclick = function() {
+        if (videoLinks.length > 0) {
+            currentVideoIndex = (currentVideoIndex + 1) % videoLinks.length;
+            openVideo(videoLinks[currentVideoIndex].url);
+        }
+    };
+
+    progressBar.onclick = function(e) {
+        if (videoElement && videoElement.duration) {
+            let rect = progressBar.getBoundingClientRect();
+            let clickX = e.clientX - rect.left;
+            let percent = clickX / rect.width;
+            let newTime = percent * videoElement.duration;
+            videoElement.currentTime = newTime;
+        }
+    };
+
+    closeBtn.onclick = function() {
+        if (videoElement) {
+            videoElement.pause();
+            playerContainer.style.display = 'none';
+            overlay.style.display = 'none';
+            playerVisible = false;
+        }
+    };
+
+    // Закрытие плеера при клике вне его области
+    overlay.onclick = function(e) {
+        if (e.target === overlay) {
+            closeBtn.click();
+        }
+    };
+
+    // Функция форматирования времени
+    function formatTime(seconds) {
+        if (isNaN(seconds) || seconds === Infinity) return '00:00';
+        
+        let min = Math.floor(seconds / 60);
+        let sec = Math.floor(seconds % 60);
+        return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    // Добавляем обработку клавиш
+    document.addEventListener('keydown', function(e) {
+        if (!playerVisible) return;
+        
+        switch(e.key) {
+            case ' ':
+                if (videoElement) {
+                    if (isPlaying) {
+                        videoElement.pause();
+                        playBtn.innerHTML = '▶';
+                        isPlaying = false;
+                    } else {
+                        videoElement.play();
+                        playBtn.innerHTML = '❚ ❚';
+                        isPlaying = true;
+                    }
+                }
+                break;
+            case 'ArrowLeft':
+                prevBtn.click();
+                break;
+            case 'ArrowRight':
+                nextBtn.click();
+                break;
+            case 'Escape':
+                closeBtn.click();
+                break;
+        }
+    });
+
+    // Возвращаем функции для внешнего использования
+    return {
+        openVideo: openVideo,
+        closeVideo: function() {
+            if (videoElement) {
+                videoElement.pause();
+                playerContainer.style.display = 'none';
+                overlay.style.display = 'none';
+                playerVisible = false;
+            }
+        }
+    };
+}
+
+[preview.js|public|no log|cache]
+/* =======================================================
+   Hover preview для ссылок вида <a class="image-link">
+   ======================================================= */
+
+function initPreview() {
+    const PREVIEW_OFFSET_X = 20; // смещение по X
+    const PREVIEW_OFFSET_Y = 20; // смещение по Y
+
+    // Создаём один “потоковый” контейнер для всех превью (переиспользуем)
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'preview-wrapper';
+    document.body.appendChild(previewContainer);
+
+    // Создаём img‑элемент внутри контейнера
+    const previewImg = document.createElement('img');
+    previewContainer.appendChild(previewImg);
+
+    // Функция-обработчик наведения
+    function onLinkHover(e) {
+        const link = e.currentTarget;
+        const href = link.href;
+        const thumbSrc = href + (href.includes('?') ? '&' : '?') + 'mode=thumb';
+
+        // Задаём src и показываем контейнер
+        previewImg.src = thumbSrc;
+
+        // Показуем контейнер после того, как изображение загрузится
+        previewImg.onload = () => {
+            previewContainer.style.display = 'block';
+            // Позиционируем относительно курсора
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+            const rect = previewContainer.getBoundingClientRect();
+
+          //  let left = e.clientX + PREVIEW_OFFSET_X;
+          //  let top = e.clientY + PREVIEW_OFFSET_Y;
+            let left  = e.pageX + PREVIEW_OFFSET_X;
+            let top   = e.pageY + PREVIEW_OFFSET_Y;
+
+            // Плавно перемещаем, чтобы не выходить за экран
+            if (left + rect.width > winW) left = e.clientX - rect.width - PREVIEW_OFFSET_X;
+//            if (top + rect.height > winH) top = e.clientY - rect.height - PREVIEW_OFFSET_Y;
+//            if (top + rect.height > e.pageY + winH) top = e.pageY + winH - rect.height - PREVIEW_OFFSET_Y;
+            if (top + rect.height > e.pageY-e.screenY + winH) top = e.pageY-e.screenY + winH - rect.height - PREVIEW_OFFSET_Y;
+
+            previewContainer.style.left = `${left}px`;
+            previewContainer.style.top = `${top}px`;
+        };
+
+        previewImg.onerror = () => {
+            // Если изображение не загрузилось, скрываем контейнер
+            previewContainer.style.display = 'none';
+        };
+    }
+
+    // Функция-обработчик ухода мыши
+    function onLinkLeave() {
+        previewContainer.style.display = 'none';
+    }
+
+    // Подключаем события к всем ссылкам
+    const links = document.querySelectorAll('.image-link');
+    links.forEach(link => {
+        link.addEventListener('mouseenter', onLinkHover);
+        link.addEventListener('mouseleave', onLinkLeave);
+        // Если хотите, чтобы preview «следил» за курсором:
+        link.addEventListener('mousemove', e => {
+            const rect = previewContainer.getBoundingClientRect();
+//            let left = e.clientX + PREVIEW_OFFSET_X;
+//            let top = e.clientY + PREVIEW_OFFSET_Y;
+            let left  = e.pageX + PREVIEW_OFFSET_X;
+            let top   = e.pageY + PREVIEW_OFFSET_Y;
+
+            const winW = window.innerWidth;
+            const winH = window.innerHeight;
+
+            if (left + rect.width > winW) left = e.clientX - rect.width - PREVIEW_OFFSET_X;
+//            if (top + rect.height > winH) top = e.clientY - rect.height - PREVIEW_OFFSET_Y;
+//            if (top + rect.height > e.pageY + winH) top = e.pageY + winH - rect.height - PREVIEW_OFFSET_Y;
+            if (top + rect.height > e.pageY-e.screenY + winH) top = e.pageY-e.screenY + winH - rect.height - PREVIEW_OFFSET_Y;
+
+            previewContainer.style.left = `${left}px`;
+            previewContainer.style.top = `${top}px`;
+        });
+    });
+};
+
 [lib.js|public|no log|cache]
 
 {.$login.js.}
@@ -1286,45 +2188,67 @@ function sendFiles(files, done) {
     for (var i = 0; i < files.length; i++)
         formData.append('file', files[i])
 
-	var xhr = new XMLHttpRequest();
-	xhr.open('POST', '');
-	xhr.send(formData);
-	xhr.onload = data=> {
-		try {
-			data = JSON.parse(data)
-			data.forEach(r=> {
-				let e = $sel('#upload-'+(r.err ? 'ko' : 'ok'))
-				e.textContent = +e.textContent +1
-				$toggle(e.parentNode, true) // only for 'ko'
-				e = r.err ? $create('span', { a:{title:r.err}, h:'<i class="fa fa-ban"></i> '+ r.name })
-					: $create('a', {
-						a: { href:r.url, title:"{.!Size.}: '+r.size+'&#013;{.!Speed.}: '+r.speed+'B/s" },
-						h: '<i class="fa fa-'+(r.err ? 'ban' : 'check-circled')+'"></i> '+r.name
-					})
-				$sel('#upload-results').appendChild(e)
-			})
-		}
-		catch(e){
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '');
+    xhr.send(formData);
+    xhr.onload = function(data) {
+      // Check return status
+      if (xhr.status === 200) {
+        try {
+          d2 = JSON.parse(xhr.responseText)
+          d2.forEach(r=> {
+            let e = $sel('#upload-'+(r.err ? 'ko' : 'ok'))
+            e.textContent = +e.textContent +1
+            $toggle(e.parentNode, true) // only for 'ko'
+            e = r.err ? $create('span', { a:{title:r.err}, h:'<i class="fa fa-ban"></i> '+ r.name })
+                  : $create('a', {
+			a: { href:r.url, title:"{.!Size.}: "+r.size+'&#013;{.!Speed.}: '+r.speed+"B/s" },
+			h: '<i class="fa fa-'+(r.err ? 'ban' : 'check-circled')+'"></i> '+r.name
+		})
+			$sel('#upload-results').appendChild(e)
+           })
+         }
+        catch(e){
 			console.error(e)
 			showError('Invalid server reply')
-		}
-		done()
-	}
-	xhr.onerror = done
+         }
+       } else {
+              console.error('Server error: ' + xhr.status)
+              showError('Server error')
+       }
+       done()
+      }
 
-	var e = $sel('#upload-progress')
-	var prog = $sel('progress', e)
+    xhr.onerror = function() {
+          done()
+     }
+
+    var e = $sel('#upload-progress')
+    var prog = $sel('progress', e)
 	prog.value = 0
-	$toggle(e)
+	$toggle(e, true)
 	var last = 0
 	var now = 0
-	xhr.onprogress = ev=>
-		prog.value = (now = ev.loaded) / ev.total
-	var h = setInterval(()=>{
+
+    xhr.upload.onprogress = function(ev){
+      if (ev.lengthComputable) {
+        let valueToSet = (now = ev.loaded) / ev.total;
+        // Check if the value is a valid, finite number
+        if (Number.isFinite(valueToSet)) {
+          prog.value = valueToSet;
+         } else {
+          // Handle the error or set a default value, like 0
+          console.error("Invalid value provided for progress bar:", valueToSet);
+          prog.value = 0;
+         }
+       }
+     }
+    var h = setInterval(()=>{
 		$sel('#progress-text').textContent = smartSize(now)+'B @ '+smartSize(now-last)+'/s'
 		last = now
 	},1000)
-	xhr.onload = ev=> {
+
+    xhr.upload.onload = ev=> {
 		$toggle(e)
 		clearInterval(h)
 	}
@@ -1345,6 +2269,15 @@ function smartSize(n, options) {
 	return round(n, options.decimals)
 		+orders[i]
 }//smartSize
+
+function formatBytes(bytes, decimals = 2) {
+    if (!+bytes) return '0 Bytes'
+    const k = 1024
+    const dm = decimals < 0 ? 0 : decimals
+    const sizes = ['Bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
+}//formatBytes
 
 function round(v, digits) {
 	return !digits ? Math.round(v) : Math.round(v*Math.pow(10,digits)) / Math.pow(10,digits)
@@ -1473,7 +2406,7 @@ $domReady(()=>{
     $toggle('delete-selection', $sel('.can-delete'))
     $click('#archive', ()=>
         mustSelect() && ask("{.!Downloading many files as archive can be a lengthy operation, and the result is a TAR file. Continue?.}", ()=>
-            submit({ selection: getSelectedItemsName() }, "?mode=archive") ))
+            submit({ selection: getSelectedItemsName(), nofolders: true }, "?mode=archive&recursive") ))
 
     $msel('#files .cannot-access .item-link img', x=>
 		x.insertAdjacentElement('afterend', $icon('lock', "{.!No access.}") ))
@@ -1500,10 +2433,6 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
-function music(){ //C DJ BSD2License
-  var e=1,n=new Audio,o=[[]],c=0,r=[];
-  document.querySelectorAll("a[href]").forEach(function(t,e){
-     var n;[".mp3",".ogg",".m4a",".wma",".aac","flac",".Mp3",".MP3",".OGG",".M4A",".WMA",".AAC","FLAC"].indexOf(t.getAttribute("href").slice(-4))+1&&(o[0].push(t.getAttribute("href")),t.addEventListener("click",function(e){e.preventDefault(),i(t.getAttribute("href"))}),(n=document.querySelector('input[value="'+t.getAttribute("href")+'"]'))&&(n.checked=!0))}),"?shuffle"==location.search&&(e=!e),e&&(o[0]=o[0].sort(function(e,t){return.5-Math.random()}));var t,u=document.querySelector("#actions")||document.querySelector("#menu-bar")||document.querySelector("body"),a=document.createElement("button");function i(e){e.match(/m3u8?$/)?fetch(e).then(function(e){e.text().then(function(e){i(e.match(/^(?!#)(?!\s).*$/gm).map(encodeURI)[0])})}):(n.src=e,n.play(),document.title=decodeURI(e))}a.textContent="\u25BA",a.setAttribute("class","play"),a.onclick=function(){n.paused?(n.src||(n.src=(e?o[0]:t)[0]),n.play()):n.pause()},a.oncontextmenu=function(e){e.preventDefault(),n.onended()},o[0].length&&!document.querySelector("button.play")&&u.appendChild(a),n.onended=function(){var e=n.getAttribute("src");do{e=o[c][o[c].indexOf(e)+1];var t=document.querySelector('input[value="'+e+'"]')}while(t&&!t.checked);e?i(e):c?(c--,n.src=r[c],n.onended()):i(o[0][0])},n.onpause=function(){document.querySelector("button.play").textContent="\u25BA"},n.onplay=function(){document.querySelector("button.play").textContent="\u2759 \u2759"},o[0].length&&(window.onbeforeunload=function(e){localStorage.last=n.getAttribute("src")+"#t="+n.currentTime},t=localStorage.last.split("#t="),n.preload="none",n.src=(e?o[0]:t)[0],(t=1e3*location.search.slice(1))&&setTimeout(function(){document.querySelector("button.play").click()},t)),n.onerror=function(){n.onended()},"mediaSession"in navigator&&navigator.mediaSession.setActionHandler("nexttrack",function(){n.onended()})}
 
 
 [sha256.js|public]
@@ -2235,7 +3164,7 @@ $domReady(()=>{
     $toggle('delete-selection', $sel('.can-delete'))
     $click('#archive', ()=>
         mustSelect() && ask("Downloading many files as archive can be a lengthy operation, and the result is a TAR file. Continue?", ()=>
-            submit({ selection: getSelectedItemsName() }, "?mode=archive") ))
+            submit({ selection: getSelectedItemsName() }, "?mode=archive&recursive") ))
 
     $msel('#files .cannot-access .item-link img', x=>
 		x.insertAdjacentElement('afterend', $icon('lock', "No access") ))
@@ -2262,7 +3191,4 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
-function music(){ //C DJ BSD2License
-  var e=1,n=new Audio,o=[[]],c=0,r=[];
-  document.querySelectorAll("a[href]").forEach(function(t,e){
-     var n;[".mp3",".ogg",".m4a",".wma",".aac","flac",".Mp3",".MP3",".OGG",".M4A",".WMA",".AAC","FLAC"].indexOf(t.getAttribute("href").slice(-4))+1&&(o[0].push(t.getAttribute("href")),t.addEventListener("click",function(e){e.preventDefault(),i(t.getAttribute("href"))}),(n=document.querySelector('input[value="'+t.getAttribute("href")+'"]'))&&(n.checked=!0))}),"?shuffle"==location.search&&(e=!e),e&&(o[0]=o[0].sort(function(e,t){return.5-Math.random()}));var t,u=document.querySelector("#actions")||document.querySelector("#menu-bar")||document.querySelector("body"),a=document.createElement("button");function i(e){e.match(/m3u8?$/)?fetch(e).then(function(e){e.text().then(function(e){i(e.match(/^(?!#)(?!\s).*$/gm).map(encodeURI)[0])})}):(n.src=e,n.play(),document.title=decodeURI(e))}a.textContent="\u25BA",a.setAttribute("class","play"),a.onclick=function(){n.paused?(n.src||(n.src=(e?o[0]:t)[0]),n.play()):n.pause()},a.oncontextmenu=function(e){e.preventDefault(),n.onended()},o[0].length&&!document.querySelector("button.play")&&u.appendChild(a),n.onended=function(){var e=n.getAttribute("src");do{e=o[c][o[c].indexOf(e)+1];var t=document.querySelector('input[value="'+e+'"]')}while(t&&!t.checked);e?i(e):c?(c--,n.src=r[c],n.onended()):i(o[0][0])},n.onpause=function(){document.querySelector("button.play").textContent="\u25BA"},n.onplay=function(){document.querySelector("button.play").textContent="\u2759 \u2759"},o[0].length&&(window.onbeforeunload=function(e){localStorage.last=n.getAttribute("src")+"#t="+n.currentTime},t=localStorage.last.split("#t="),n.preload="none",n.src=(e?o[0]:t)[0],(t=1e3*location.search.slice(1))&&setTimeout(function(){document.querySelector("button.play").click()},t)),n.onerror=function(){n.onended()},"mediaSession"in navigator&&navigator.mediaSession.setActionHandler("nexttrack",function(){n.onended()})}
+

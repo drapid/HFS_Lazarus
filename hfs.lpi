@@ -49,15 +49,6 @@
     </RunParams>
     <RequiredPackages>
       <Item>
-        <PackageName Value="richmemopackage"/>
-      </Item>
-      <Item>
-        <PackageName Value="richmemo_design"/>
-      </Item>
-      <Item>
-        <PackageName Value="lazrichview"/>
-      </Item>
-      <Item>
         <PackageName Value="LCL"/>
       </Item>
     </RequiredPackages>
@@ -103,7 +94,9 @@
       <Unit>
         <Filename Value="lib\shellExtDlg.pas"/>
         <IsPartOfProject Value="True"/>
+        <ComponentName Value="shellExtFrm"/>
         <HasResources Value="True"/>
+        <ResourceBaseClass Value="Form"/>
       </Unit>
       <Unit>
         <Filename Value="lib\diffDlg.pas"/>
@@ -213,7 +206,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="srv;..\RnQ\for.RnQ\RTL;..\RnQ\for.RnQ;jcl;$(ProjOutDir)"/>
-      <OtherUnitFiles Value="srv;..\RnQ\for.RnQ\RTL;..\RnQ\for.RnQ;..\rnq\for.RnQ\External\mORMot2\src;..\rnq\for.RnQ\External\mORMot2\src\core;..\rnq\for.RnQ\External\mORMot2\src\crypt;..\rnq\for.RnQ\External\mORMot2\src\lib;..\rnq\for.RnQ\zip;lib\ezthreads;jcl;lib;..\..\Comps\ICS_Lazarus;..\..\Comps\ICSv8_Lazarus"/>
+      <OtherUnitFiles Value="srv;..\RnQ\for.RnQ\RTL;..\RnQ\for.RnQ;..\rnq\for.RnQ\External\mORMot2\src;..\rnq\for.RnQ\External\mORMot2\src\core;..\rnq\for.RnQ\External\mORMot2\src\crypt;..\rnq\for.RnQ\External\mORMot2\src\lib;..\rnq\for.RnQ\zip;..\rnq\for.RnQ\SciDe;lib\ezthreads;jcl;lib;..\..\Comps\ICS_Lazarus;..\..\Comps\Delphi-Cross-Socket;..\..\Comps\Delphi-Cross-Socket\Net;..\..\Comps\Delphi-Cross-Socket\DelphiToFPC;..\..\Comps\Delphi-Cross-Socket\Utils;..\..\Comps\ICSv8_Lazarus"/>
       <UnitOutputDirectory Value="Units\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>

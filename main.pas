@@ -28,9 +28,8 @@ uses
   // delphi libs
   Windows, Messages, SysUtils, Forms, Menus, Graphics, Controls, ComCtrls, Dialogs, math,
   Buttons, StdCtrls, ExtCtrls, strutils, types,
- {$IFDEF FPC}
-  RichMemo,
- {$ENDIF FPC}
+  SyncObjs,
+  Sciter, SciterApi,
   //ToolWin,
   iniFiles, Classes,
   //AppEvnts, ImageList, Winapi.CommCtrl, System.Contnrs,
@@ -58,6 +57,21 @@ type
     last: TDateTime;
     menu: Tmenuitem;
    end;
+
+  PLogData = ^TLogData;
+  TLogData = record
+    lines: UnicodeString;
+    time: TDateTime;
+    addr: String;
+    address: String;
+    fileStr: String;
+    fileDynName: String;
+    clr: Tcolor;
+   {$IFDEF SHOW_GEO_BY_IP}
+    cc: String; // CountryCode
+   {$ENDIF SHOW_GEO_BY_IP}
+  end;
+  TLogDatas = array of TLogData;
 
   { TmainFrm }
 
@@ -329,7 +343,6 @@ type
     updateAutomaticallyChk: TMenuItem;
     stopSpidersChk: TMenuItem;
     logPnl: TPanel;
-    logBox: TRichMemo;
     filesPnl: TPanel;
     filesBox: TTreeView;
     logTitle: TPanel;
@@ -533,7 +546,7 @@ type
     procedure Switchtorealfolder1Click(Sender: TObject);
     procedure abortBtnClick(Sender: TObject);
     procedure Seelastserverresponse1Click(Sender: TObject);
-    procedure Showcustomizedoptions1Click(Sender: TObject);
+    procedure ShowCustomizedOptions1Click(Sender: TObject);
     procedure useISOdateChkClick(Sender: TObject);
     procedure RunHFSwhenWindowsstarts1Click(Sender: TObject);
     procedure askFolderKindChkClick(Sender: TObject);
@@ -591,7 +604,6 @@ type
     procedure restoreCfgBtnClick(Sender: TObject);
     procedure Runscript1Click(Sender: TObject);
     procedure logBoxChange(Sender: TObject);
-    procedure logBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
     procedure Changeport1Click(Sender: TObject);
     procedure trayiconforeachdownload1Click(Sender: TObject);
     procedure Defaultpointtoaddfiles1Click(Sender: TObject);
@@ -611,6 +623,10 @@ type
     procedure onShowPrefsChange(Sender: TObject);
     procedure onLogPrefsChange(Sender: TObject);
   private
+    FIsBrowserReady: Boolean;
+    FLogLock: TCriticalSection;
+    FLogArr: TLogDatas;
+    LogBrowser: TSciter;
     function  searchLog(dir: Integer): Boolean;
     procedure WMDropFiles(var msg:TWMDropFiles);
       message WM_DROPFILES;
@@ -663,6 +679,10 @@ type
     function  recalculateGraph(): Boolean;
     procedure remove(node: TFileNode=NIL); OverLoad;
     procedure onServerStatusChanged(open: Boolean);
+    function  onUpdateLogTimer(doScroll: Boolean = True): Boolean;
+    procedure add2logInt(const data: TLogData; doScroll: Boolean = True);
+    procedure add2logData(var ld: TLogData; const lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+    procedure Add2LogInt2(const ev: TLogData);
  public
     fileSrv: TFileServer;
     easyMode: boolean;
@@ -681,8 +701,8 @@ type
     function  addFile(f: TFile; parent: TFileNode; skipComment: boolean; var newNode: TFileNode): TFile; OverLoad;
     procedure OnBeforeAddFile(Sender: TObject);
     procedure OnAfterAddFile(f: Tfile; parentNode, node: TTreeNode; skipComment: Boolean; addingStoped: Boolean);
-    procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
-    function  ipPointedInLog(): String;
+    procedure add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+    procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor = Graphics.clDefault);
     procedure saveVFS(fn: String='');
     function  finalInit(): boolean;
     procedure processParams_after(var params: TStringDynArray);
@@ -724,6 +744,7 @@ var
   trayNL: string = #13;
 //  VFSmodified: boolean; // TRUE if the VFS changes have not been saved
   tempScriptFilename: string;
+  lastRunFolder: String;
   lastFileOpen: string;
   saveMode: ( SM_USER, SM_SYSTEM, SM_FILE );
   tray: TmyTrayicon;
@@ -1710,61 +1731,173 @@ begin
      FormatSettings.ShortDateFormat:=GetLocaleStr(LOCALE_USER_DEFAULT, LOCALE_SSHORTDATE,'');
 end;
 
+procedure Tmainfrm.add2logData(var ld: TLogData; const lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+var
+  addr: String;
+begin
+  ld.lines := lines;
+  ld.time := now;
+
+  if assigned(cd) then
+    begin
+      ld.address := cd.address;
+      if assigned(cd.conn) then
+        addr := nonEmptyConcat('', cd.usr, '@')
+          +ifThen(cd.conn.v6, '['+cd.address+']', cd.address)
+          +':'+cd.conn.port
+          +nonEmptyConcat(' {', localDNSget(cd.address), '}')
+       else
+        addr := nonEmptyConcat('', cd.usr, '@')
+          + cd.address
+          + nonEmptyConcat(' {', localDNSget(cd.address), '}');
+      ld.addr := addr;
+    end
+   else
+    addr := '';
+ {$IFDEF SHOW_GEO_BY_IP}
+  if Assigned(cd) and not cd.isLocalAddress then
+    begin
+      var cc: String;
+      if not cd.isLocalAddress and Assigned(geoip) then
+      try
+        cc := TConnDataGui(TconnData(cd).guiData).country.CountryCode;
+        if cc='' then
+          geoip.GetCountry(cd.address, TConnDataGui(TconnData(cd).guiData).country);
+        cc := TConnDataGui(TconnData(cd).guiData).country.CountryCode;
+       except
+        TConnDataGui(TconnData(cd).guiData).country.CountryCode := '';
+        TConnDataGui(TconnData(cd).guiData).country.CountryName := '';
+        cc := '';
+      end;
+      ld.cc := cc;
+    end;
+ {$ENDIF SHOW_GEO_BY_IP}
+
+  if (cd = NIL) or (cd.conn = nil) then
+    ld.fileStr := TAB+''+TAB+''+TAB+''+TAB+''
+   else
+    ld.fileStr := TAB+cd.usr+TAB+cd.address+TAB+cd.conn.port+TAB+localDNSget(cd.address);
+  ld.fileDynName := getDynLogFilename(cd);
+end;
+
+procedure Tmainfrm.add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+begin
+  // This must be thread safe, a log can be called all over the place
+  if not Assigned(FLogLock) then
+    begin
+      add2log(lines, cd, clr);
+      Exit;
+    end;
+  FLogLock.Acquire;
+  try
+    SetLength(FLogArr, Length(FLogArr) + 1);
+    add2logData(FLogArr[ High(FLogArr)], lines, cd, clr);
+   finally
+    FLogLock.Release;
+  end;
+end;
+
 procedure Tmainfrm.add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
 var
-  s: UnicodeString;
-  ts, first, rest, addr: string;
- {$IFDEF FPC}
-  fp: TFontParams;
- {$ENDIF FPC}
+  ld: TLogData;
 begin
   if not logOnVideoChk.checked
    and ((logFile.filename = '') or (logFile.apacheFormat > '')) then
     exit;
 
-  if clr = Graphics.clDefault then
-    clr := clWindowText;
+  onUpdateLogTimer;
+
+  add2logData(ld, lines, cd, clr);
+  add2logInt(ld);
+
+end; // add2log
+
+function HtmlEscape(const S: string): string;
+begin
+  Result := StringReplace(S, '&', '&amp;', [rfReplaceAll]);
+  Result := StringReplace(Result, '<', '&lt;', [rfReplaceAll]);
+  Result := StringReplace(Result, '>', '&gt;', [rfReplaceAll]);
+  Result := StringReplace(Result, '"', '&quot;', [rfReplaceAll]);
+  Result := StringReplace(Result, '''', '&#39;', [rfReplaceAll]);
+end;
+
+function Tmainfrm.onUpdateLogTimer(doScroll: Boolean = True): Boolean;
+var
+  datas: TLogDatas;
+  i: Integer;
+begin
+  if Length(FLogArr) = 0 then
+    Exit(False);
+  Result := True;
+  if not Assigned(FLogLock) then
+    Exit;
+  // Get thread critical data as fast as possible onto local copies
+  FLogLock.Acquire;
+  try
+    datas := FLogArr;
+    SetLength(FLogArr, 0);
+   finally
+    FLogLock.Release;
+  end;
+
+  // And begin showing the messages/errors in the log area
+  if Length(datas) > 0 then
+  begin
+      for i := 0 to High(datas) do
+      begin
+        add2logInt(datas[i], If_(i = High(datas), doScroll));
+      end;
+  end;
+end;
+
+procedure Tmainfrm.add2logInt(const data: TLogData; doScroll: Boolean = True);
+var
+  s, lines: UnicodeString;
+  ts, first, rest, addr: String;
+  clr: TColor;
+var
+  Root, LogBody, NewEl: IElement;
+  Html, TimePart, AddrPart, MsgPart, ContPart: String;
+  ColorCss: String;
+begin
+  if not logOnVideoChk.checked
+   and ((logFile.filename = '') or (logFile.apacheFormat > '')) then
+    exit;
+
+  if data.clr = Graphics.clDefault then
+    clr := clWindowText
+   else
+    clr := data.clr;
 
   if logDateChk.checked then
     begin
      applyISOdateFormat(); // this call shouldn't be necessary here, but it's a workaround to this bug www.rejetto.com/forum/?topic=5739
      if logTimeChk.checked then
-       ts := datetimeToStr(now())
+       ts := datetimeToStr(data.time)
       else
-       ts := dateToStr(now())
+       ts := dateToStr(data.time)
     end
    else
     if logTimeChk.checked then
-      ts := timeToStr(now())
+      ts := timeToStr(data.time)
      else
       ts := '';
-
+  lines := data.lines;
   first := chopLine(lines);
   if lines = '' then
     rest := ''
    else
     rest := reReplace(lines, '^', '> ')+CRLF;
+ addr := data.addr;
+ {$IFDEF SHOW_GEO_BY_IP}
+  if data.cc > '' then
+    addr := addr + ' from {' + data.cc + '}';
+ {$ENDIF SHOW_GEO_BY_IP}
 
-  if assigned(cd) and assigned(cd.conn) then
-    addr := nonEmptyConcat('', cd.usr, '@')
-      +ifThen(cd.conn.v6, '['+cd.address+']', cd.address)
-      +':'+cd.conn.port
-      +nonEmptyConcat(' {', localDNSget(cd.address), '}')
-  else if assigned(cd)  then
-    addr := nonEmptyConcat('', cd.usr, '@')
-      + cd.address
-      + nonEmptyConcat(' {', localDNSget(cd.address), '}')
-   else
-    addr := '';
 
   if (logFile.filename > '') and (logFile.apacheFormat = '') then
    begin
-    s := ts;
-    if (cd = NIL) or (cd.conn = nil) then
-      s := s+TAB+''+TAB+''+TAB+''+TAB+''
-     else
-      s := s+TAB+cd.usr+TAB+cd.address+TAB+cd.conn.port+TAB+localDNSget(cd.address);
-    s := s+TAB+first;
+    s := ts + data.fileStr +TAB+ first;
 
     if tabOnLogFileChk.checked then
       s := s+stripChars(reReplace(lines, '^', TAB),[#13,#10])
@@ -1772,76 +1905,86 @@ begin
       s := s+CRLF+rest;
 
     includeTrailingString(s, CRLF);
-    appendFileU(getDynLogFilename(cd), s);
+    appendFileU(data.fileDynName, s);
    end;
 
   if not logOnVideoChk.checked then
     exit;
 
- {$IFDEF FPC}
-  logbox.selstart := length(logbox.Text);
-  logBox.SelText := ts+'  ';
-  fp.Name:=logFontName;
-  fp.Color:=clRed;
-  if logFontSize > 0 then
-    fp.size := logFontSize
-   else ;
-    fp.Size:= logBox.Font.Size;
-  logbox.SetTextAttributes(logbox.selstart, logbox.SelLength, fp);
+  if not FIsBrowserReady then
+    Exit;
 
-  if addr > '' then
-  begin
-    logbox.selstart := length(logbox.Text);
-    logBox.SelText := addr+'  ';
-    fp.Color := ADDRESS_COLOR;
-    logbox.SetTextAttributes(logbox.selstart, logbox.SelLength, fp);
-  end;
-  logbox.selstart := length(logbox.Text);
-  logBox.SelText := first+CRLF;
-  fp.Color := clr;
-  logbox.SetTextAttributes(logbox.selstart, logbox.SelLength, fp);
-  fp.Color := clBlue;
-  logbox.selstart := length(logbox.Text);
-  logBox.SelText := rest;
-  logbox.SetTextAttributes(logbox.selstart, logbox.SelLength, fp);
- {$ELSE ~FPC}
-  logbox.selstart := length(logbox.Text);
-  logBox.SelAttributes.name := logFontName;
-  if logFontSize > 0 then
-    logBox.SelAttributes.size := logFontSize;
-  logBox.SelAttributes.Color := clRed;
-  logBox.SelText := ts+'  ';
-  if addr > '' then
-  begin
-    logBox.SelAttributes.Color:=ADDRESS_COLOR;
-    logBox.SelText := addr+'  ';
-  end;
-  logBox.SelAttributes.color:=clr;
-  logBox.SelText:=first+CRLF;
-  logBox.selAttributes.color:=clBlue;
-  logBox.SelText := rest;
- {$ENDIF ~FPC}
+    if clr = clWindowText then
+      ColorCss := ''
+    else
+      ColorCss := Format(' style="color:#%6.6x"', [ColorToRGB(clr) and $FFFFFF]);
 
-  if (logMaxLines = 0) or (logBox.Lines.Count <= logMaxLines) then
-    exit;
-  // found no better way to remove multiple lines with a single move
- {$IFNDEF FPC}
-  logbox.LockDrawing;
- {$ENDIF ~FPC}
-  //logBox.perform(WM_SETREDRAW, 0, 0);
-  try
-    logBox.SelStart := 0;
-    logBox.SelLength := logBox.perform(EM_LINEINDEX, logBox.lines.count-round(logMaxLines*0.9), 0);;
-    logBox.selText := '';
-    logbox.selstart := length(logbox.Text);
-   finally
-  //  logBox.perform(WM_SETREDRAW, 1, 0);
-  //  logBox.invalidate();
-   {$IFNDEF FPC}
-    logBox.UnlockDrawing;
-   {$ENDIF ~FPC}
-  end;
-end; // add2log
+    TimePart := '';
+    if ts <> '' then
+      TimePart := '<span class="time">' + HtmlEscape(ts) + '</span> ';
+
+    AddrPart := '';
+    if addr <> '' then
+      AddrPart := '<span class="addr">' + HtmlEscape(addr) + '</span> ';
+
+    MsgPart := '<span class="msg"' + ColorCss + '>' + HtmlEscape(first) + '</span>';
+
+    ContPart := '';
+    if rest <> '' then
+      ContPart := '<div class="cont">' + HtmlEscape(rest) + '</div>';  // rest already contain > and CRLF
+
+    Html := '<div class="log-msg">' + TimePart + AddrPart + MsgPart + ContPart + '</div>';
+
+    Root := LogBrowser.Root;
+    if not Assigned(Root) then Exit;
+
+    LogBody := Root.Select('#log');
+    if not Assigned(LogBody) then Exit;
+
+    //NewEl := LogBody.CreateElement('div', '');   // or LogBody.AppendHtml(Html)
+    //NewEl.SetOuterHtml(Html);                 // or NewEl.InnerHtml := ... + set class
+    //LogBody.AppendChild(NewEl);                   // / InsertAfter / AppendChild
+        LogBody.InnerHtml := LogBody.InnerHtml + html;
+   //LogBody.InsertAdjacentHTML('beforeend', Html);
+
+    // Scroll
+    if doScroll and (LogBody.ChildrenCount > 0) then
+      LogBody.GetChild(LogBody.ChildrenCount - 1).ScrollToView; // true = smooth, if supported
+
+    // Trim if too much rows (same as logMaxLines)
+    while (logMaxLines > 0) and (LogBody.ChildrenCount > logMaxLines) do
+      LogBody.GetChild(0).Detach; // or Delete / Remove
+end; // add2logInt
+
+function JsonQuote(const S: string): string;
+begin
+  Result := '"' + StringReplace(StringReplace(S, '\', '\\', [rfReplaceAll]),
+                                '"', '\"', [rfReplaceAll]) + '"';
+end;
+
+procedure Tmainfrm.Add2LogInt2(const ev: TLogData);
+var
+  Json: string;
+  lines, first, rest: String;
+begin
+  lines := ev.lines;
+  first := chopLine(lines);
+  if lines = '' then
+    rest := ''
+   else
+    rest := reReplace(lines, '^', '> ')+CRLF;
+
+  Json := Format(
+    '{"ts":%s,"addr":%s,"msg":%s,"cont":%s,"color":%s}',
+    [JsonQuote(TimeToStr(Ev.time)),
+     JsonQuote(Ev.addr),
+     JsonQuote(first),
+     JsonQuote(rest),
+     JsonQuote(Format(' style="color:#%6.6x"', [ColorToRGB(ev.clr) and $FFFFFF]))]
+  );
+
+  LogBrowser.Call('addLogEvent', [Json]);
+end;
 
 procedure kickBannedOnes(fs: TFileServer);
 var
@@ -2566,7 +2709,7 @@ begin
 +'easy='+yesno[easyMode]+CRLF
 +'files-box-ratio='+floatToStr(filesBoxRatio)+CRLF
 +'log-max-lines='+intToStr(logMaxLines)+CRLF
-+'log-read-only='+yesno[logbox.readonly]+CRLF
+//+'log-read-only='+yesno[logbox.readonly]+CRLF
 +'log-file-name='+logFile.filename+CRLF
 +'log-font-name='+logFontName+CRLF
 +'log-font-size='+intToStr(logFontSize)+CRLF
@@ -3056,8 +3199,8 @@ begin
       if h = 'log-time' then
         LogtimeChk.checked := yes
        else
-      if h = 'log-read-only' then
-        logbox.readonly:=yes;
+      //if h = 'log-read-only' then
+        //logbox.readonly:=yes;
       if h = 'log-browsing' then
         logBrowsingChk.checked:=yes;
       if h = 'log-icons' then logIconsChk.checked:=yes;
@@ -3258,7 +3401,7 @@ and not saveTotalsChk.checked then
   end;
 findSimilarIP(savedIP);
 if lastGoodLogWidth > 0 then
-  logBox.Width:=lastGoodLogWidth;
+  LogBrowser.Width := lastGoodLogWidth;
 if lastGoodConnHeight > 0 then
   connPnl.Height:=lastGoodConnHeight;
 if not fileExists(tplFilename) then
@@ -3617,6 +3760,7 @@ var
   libs: String;
 begin
   libs := getLibs;
+  libs := libs + #13 +'Sciter: ' +LogBrowser.Version;
   msgDlg(format(copyright, [srvConst.VERSION,VERSION_BUILD + ' ' + DateTimeToStr(BuiltTime)]) + crlf  + libs)
 end;
 
@@ -4154,6 +4298,7 @@ var
     if itsTimeFor(searchLogWhiteTime) then
       logSearchBox.Color := clWindow;
 
+    onUpdateLogTimer;
   end; // everyTenth
 
   function every(tenths: integer): boolean;
@@ -4519,7 +4664,7 @@ var
   s: TfastUStringAppend;
   i: integer;
 begin
-  mask := logSearchBox.text;
+{  mask := logSearchBox.text;
   s := TfastUStringAppend.create;
   try
     if sender = openLogBtn then
@@ -4541,6 +4686,7 @@ begin
     exec(fn+'.txt')
    else
     msgDlg(MSG_NO_TEMP, MB_ICONERROR);
+}
 end;
 
 // returns the last file added
@@ -4729,8 +4875,8 @@ end;
 
 procedure TmainFrm.splitVMoved(Sender: TObject);
 begin
-  if logBox.width > 0 then
-    lastGoodLogWidth := logBox.width;
+  if LogBrowser.width > 0 then
+    lastGoodLogWidth := LogBrowser.width;
   filesBoxRatio := filesPnl.Width/ClientWidth
 end;
 
@@ -4906,9 +5052,9 @@ end;
 
 procedure TmainFrm.logmenuPopup(Sender: TObject);
 begin
-Readonly1.Checked:=logBox.ReadOnly;
+Readonly1.Checked:=True; //logBox.ReadOnly;
 Readonly1.visible:=not easyMode;
-Banthisaddress1.visible:= ipPointedInLog() > '';
+//Banthisaddress1.visible:= ipPointedInLog() > '';
 Address2name1.visible:=not easyMode;
 Logfile1.visible:=not easyMode;
 logOnVideoChk.visible:=not easyMode;
@@ -4926,6 +5072,7 @@ var
   t, s: string;
   i, l, tl, from, n: integer;
 begin
+{
 timeTookToSearchLog:=now();
 try
   result:=TRUE;
@@ -4977,6 +5124,7 @@ try
   logBox.SelLength:=l;
   result:=TRUE;
 finally timeTookToSearchLog:=now()-timeTookToSearchLog end;
+}
 end;
 
 procedure TmainFrm.logSearchBoxChange(Sender: TObject);
@@ -4999,34 +5147,54 @@ procedure TmainFrm.logUpDownClick(Sender: TObject; Button: TUDBtnType);
 begin searchLog(if_(button = btNext, -1, +1)) end;
 
 procedure TmainFrm.Readonly1Click(Sender: TObject);
-begin with logBox do ReadOnly:=not ReadOnly end;
+begin
+  //with logBox do ReadOnly:=not ReadOnly
+end;
 
 procedure TmainFrm.Clear1Click(Sender: TObject);
-begin logBox.Clear() end;
+const
+  BaseHTML =
+    '<html><head><style>' +
+    'body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }' +
+    '.log-msg { border-bottom: 1px dashed #eee; padding: 3px 0; }' +
+    '.time { color: #888; font-family: monospace; margin-right: 6px; }' +
+    '</style></head><body id="log"></body></html>';
+begin
+  // Загружаем базовую структуру лога
+  LogBrowser.LoadHtml(BaseHTML, '\');
+end;
 
 procedure TmainFrm.Clearandresettotals1Click(Sender: TObject);
 begin
-  logBox.clear();
+  Clear1Click(Sender);
   resetTotals(fileSrv);
 end;
 
 procedure TmainFrm.Copy1Click(Sender: TObject);
 begin
-if logBox.SelLength > 0 then setClip(logBox.SelText)
-else setClip(logBox.Text)
+{
+  if logBox.SelLength > 0 then
+    setClip(logBox.SelText)
+   else
+    setClip(logBox.Text)
+}
 end;
 
 procedure TmainFrm.Saveas1Click(Sender: TObject);
 var
   fn: string;
 begin
+{
   fn := '';
   if PromptForFileName(fn, 'Text file|*.txt', 'txt', 'Save log', '', TRUE) then
     savefileU(fn, logBox.text);
+}
 end;
 
 procedure TmainFrm.Save1Click(Sender: TObject);
-begin savefileU('hfs.log', logBox.text) end;
+begin
+  //savefileU('hfs.log', logBox.text)
+end;
 
 procedure deleteCFG();
 begin
@@ -5462,7 +5630,7 @@ begin
  {$ELSE ~FPC}
   ppi := Self.CurrentPPI;
  {$ENDIF FPC}
-  logBox.Font.PixelsPerInch := ppi;
+  //logBox.Font.PixelsPerInch := ppi;
  {$IFNDEF FPC}
   IconsDM.images.SetSize(MulDiv(16, ppi, 96), MulDiv(16, ppi, 96));
  {$ENDIF FPC}
@@ -6238,7 +6406,9 @@ begin
 end; // loadVFS
 
 procedure TmainFrm.logBoxChange(Sender: TObject);
-begin logToolbar.visible:=not easyMode and (logBox.Lines.count > 0) end;
+begin
+  logToolbar.visible:=not easyMode //and (logBox.Lines.count > 0)
+end;
 
 procedure Tmainfrm.popupMainMenu();
 begin
@@ -6595,7 +6765,7 @@ end;
 procedure TmainFrm.FormAfterMonitorDpiChanged(Sender: TObject; OldDPI,
   NewDPI: Integer);
 begin
-  logBox.Font.PixelsPerInch := NewDPI;
+  //logBox.Font.PixelsPerInch := NewDPI;
  {$IFNDEF FPC}
   IconsDM.images.SetSize(MulDiv(16, NewDPI, 96), MulDiv(16, NewDPI, 96));
  {$ENDIF ~FPC}
@@ -6634,7 +6804,7 @@ dlg.Font.name:=logFontName;
 dlg.Font.size:=logFontSize;
 if dlg.Execute then
   begin
-  logBox.font.Assign(dlg.Font);
+  //logBox.font.Assign(dlg.Font);
   logFontName:=dlg.Font.Name;
   logFontSize:=dlg.Font.size;
   end;
@@ -6754,7 +6924,58 @@ finally queryingClose:=FALSE end;
 end;
 
 procedure TmainFrm.FormCreate(Sender: TObject);
+const
+  BaseHTML =
+    '<html><head><style>' +
+    'body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }' +
+//    '.log-msg { border-bottom: 1px dashed #eee; padding: 3px 0; }' +
+//    '.time { color: #888; font-family: monospace; margin-right: 6px; }' +
+    ' #log { '+
+    '  overflow-y: auto; '+
+    '  font-family: Consolas, monospace;'+
+    '  font-size: 9pt;'+
+    '  white-space: pre-wrap;'+
+    '  word-break: break-all;'+
+    '}'+
+
+    '.log-msg {'+
+    '  margin: 0 0 2px 0;'+
+    '  line-height: 1.25;'+
+    '}'+
+
+    '.time {'+
+    '  color: red;'+
+    '  font-weight: bold;'+
+    '}'+
+
+    '.addr {'+
+    '  color: #008000;'+
+    '}'+
+
+    '.msg {'+
+    '}'+
+
+    '.cont {'+
+    '  color: blue;'+
+    '  margin-left: 1em;'+
+    '  white-space: pre-wrap;'+
+    '}' +
+'</style></head><body id="log"></body></html>';
 begin
+  FIsBrowserReady := False;
+
+  LogBrowser := TSciter.Create(logPnl);
+  LogBrowser.Parent := logPnl;
+  LogBrowser.Align := alClient;
+//  LogBrowser.OnAfterCreated := WVBrowser1AfterCreated;
+  // Указываем пустую начальную страницу
+  LogBrowser.SetHomeURL('about:blank');
+  // Запускаем создание браузера, привязывая его к нашему компоненту-контейнеру
+//  LogBrowser.paCreateBrowser(WVPanel.Handle);
+// Загружаем базовый HTML-каркас лога в память движка
+  LogBrowser.LoadHtml(BaseHTML, 'about:blank');
+  FIsBrowserReady := True;
+
   screen.onActiveFormChange := wrapInputQuery;
   easyMode := TRUE;
 
@@ -7269,51 +7490,10 @@ if InputQuery(MSG_MIN_SPACE, MSG_MIN_SPACE_LONG, s) then
   end;
 end;
 
-{$IFDEF FPC}
-function pointToCharPoint(re:TRichMemo; pt:Tpoint):Tpoint;
-{$ELSE ~FPC}
-function pointToCharPoint(re:TRichEdit; pt:Tpoint):Tpoint;
-{$ENDIF FPC}
-const
-  EM_EXLINEFROMCHAR = WM_USER+54;
-begin
-result.x:=re.perform(EM_CHARFROMPOS, 0, NativeInt(@pt));
-if result.x < 0 then exit;
-result.y:=re.perform(EM_EXLINEFROMCHAR, 0, result.x);
-dec(result.x, re.perform(EM_LINEINDEX, result.y, 0));
-end; // pointToCharPoint
-
-function Tmainfrm.ipPointedInLog():string;
-var
-  s: string;
-  pt: Tpoint;
-begin
-result:='';
-pt:=pointToCharPoint(logBox, logRightClick);
-if pt.x < 0 then
-  pt:=logbox.caretpos;
-if pt.y >= logbox.lines.count then
-  exit;
-s:=logbox.lines[pt.y];
-s:=reGet(s, '^.+  (\S+@)?\[?(\S+?)\]?:\d+  ', 2);
-if checkAddressSyntax(s,FALSE) then
-  result:=s;
-end; // ipPointedInLog
-
-procedure TmainFrm.logBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-var pt: Tpoint;
-begin
-if button = mbRight then
-  begin
-  logRightClick:=point(x,y);
-  pt:=pointToCharPoint(logBox, Point(x,y));
-  if pt.x >= 0 then
-    logBox.CaretPos:=pt;
-  end;
-end;
-
 procedure TmainFrm.Banthisaddress1Click(Sender: TObject);
-begin banAddress(fileSrv, ipPointedInLog()); end;
+begin
+  //banAddress(fileSrv, ipPointedInLog());
+end;
 
 procedure TmainFrm.Address2name1Click(Sender: TObject);
 begin

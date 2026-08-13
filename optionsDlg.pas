@@ -449,7 +449,7 @@ begin
   loadValues();
   if pageCtrl.activePage <> a2nPage then
     exit;
-  s := mainfrm.ipPointedInLog();
+  //s := mainfrm.ipPointedInLog();
   if s = '' then
     exit;
   // select row or insert new one
