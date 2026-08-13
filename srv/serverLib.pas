@@ -10,6 +10,7 @@ uses
   mormot.core.base,
   Classes,
   //Messages,
+  Dialogs,
   Graphics,
   Forms,
   ComCtrls,
@@ -322,12 +323,12 @@ uses
   mormot.core.json,
   netUtils,
   RDUtils, RDFileUtil, RDGlobal, //AnsiClasses,
-  RnQNet.Uploads.Lib, RnQNet.Uploads.Tar,
+  RD.Streams.Lib, RD.Streams.Tar,
   //RnQCrypt,
  {$IFDEF ZIP_ZSTD}
    ZSTDLib,
  {$ENDIF ZIP_ZSTD}
-  RnQzip, RnQLangs, RnQDialogs, RnQJSON,
+  RD.zip, RnQLangs, RnQDialogs, RnQJSON,
   IconsLib,
   HSUtils,
   srvUtils, parserLib, srvVars;
@@ -5207,8 +5208,8 @@ begin
   Result := SYNOPSE_FRAMEWORK_NAME + ': ' + SYNOPSE_FRAMEWORK_FULLVERSION;
   Result := Result + CrLf + OverbyteIcsWSocket.CopyRight;
 //  Result := Result + CrLf + 'SSL: ' + GSSLEAY_DLL_FileVersion;
-  Result := Result + CrLf + RnQzip.ZLibVersion;
-  Result := Result + CrLf + RnQzip.ZStdVersion;
+  Result := Result + CrLf + RD.zip.ZLibVersion;
+  Result := Result + CrLf + RD.zip.ZStdVersion;
   Result := Result + CrLf + 'WebP Encoder: ' + WebPLibVersion;
 end;
 

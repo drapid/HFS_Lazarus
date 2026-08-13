@@ -682,8 +682,8 @@ type
     procedure OnBeforeAddFile(Sender: TObject);
     procedure OnAfterAddFile(f: Tfile; parentNode, node: TTreeNode; skipComment: Boolean; addingStoped: Boolean);
     procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
-    function  ipPointedInLog():string;
-    procedure saveVFS(fn:string='');
+    function  ipPointedInLog(): String;
+    procedure saveVFS(fn: String='');
     function  finalInit(): boolean;
     procedure processParams_after(var params: TStringDynArray);
     procedure setStatusBarText(const s: String; lastFor: integer=5);
@@ -695,17 +695,17 @@ type
     procedure setLogToolbar(v:boolean);
     function  getTrayTipMsg(const tpl: String=''): String;
    {$IFDEF FPC}
-    procedure menuDraw(sender:Tobject; cnv: Tcanvas; r:Trect; ds: TOwnerDrawState);
+    procedure menuDraw(sender: TObject; cnv: Tcanvas; r:Trect; ds: TOwnerDrawState);
    {$ELSE ~FPC}
-    procedure menuDraw(sender:Tobject; cnv: Tcanvas; r:Trect; selected: boolean);
+    procedure menuDraw(sender: TObject; cnv: Tcanvas; r:Trect; selected: boolean);
    {$ENDIF FPC}
     procedure menuMeasure(sender:Tobject; cnv: Tcanvas; var w:integer; var h:integer);
     procedure wrapInputQuery(sender:Tobject);
   end; // Tmainfrm
 
   TConnDataHlp = class helper for TConnData
-     function getTray(): TmyTrayicon;
-     function getIcon(): TIcon;
+     function  getTray(): TmyTrayicon;
+     function  getIcon(): TIcon;
      procedure initGUIData(hndl: THandle; onEvent: TTrayEventHandle);
      procedure clearGuiData;
      //constructor createWithGui(conn: ThttpConn);
@@ -738,7 +738,7 @@ procedure kickBannedOnes(fs: TFileServer);
 procedure repaintTray(fs: TFileServer);
 function  paramsAsArray(): TStringDynArray;
 procedure processParams_before(var params: TStringDynArray; const allowed: String='');
-function  loadCfg(var ini, tpl: String): Boolean;
+function  loadCfg(var ini: String; Const tpl: String): Boolean;
 procedure setSpeedLimitIP(v: real);
 function  deleteAccount(const name: String): Boolean;
 function  createFingerprint(const fn: String; showProgress: Boolean = True): String;
@@ -770,7 +770,7 @@ uses
 //   AnsiClasses,
   {$ENDIF UNICODE}
   RDFileUtil, RDUtils, RDSysUtils,
-  RnQCrypt, RnQzip, RnQLangs, RnQDialogs,
+  RnQCrypt, RD.zip, RnQLangs, RnQDialogs,
   monoLib,
   newuserpassDlg, optionsDlg, folderKindDlg, shellExtDlg, diffDlg, ipsEverDlg,
   purgeDlg, progFrmLib, filepropDlg, runscriptDlg,
@@ -1321,7 +1321,7 @@ begin
   if externalIP = '' then
     exit;
   mainfrm.setStatusBarText(MSG_DDNS_DOING);
-  dyndns.lastTime:=now();
+  dyndns.lastTime := now();
   try
     s := UnUTF(netUtils.httpGet(xtpl(dyndns.url, ['%ip%', externalIP])));
    except
@@ -1355,13 +1355,13 @@ else
   end;
 end; // disableUserInteraction
 
-procedure reenableUserInteraction();
+procedure reEnableUserInteraction();
 begin
 if not userInteraction.disabled then exit;
 userInteraction.disabled:=FALSE;
 if assigned(mainFrm) then
   mainfrm.visible:=userInteraction.bakVisible;
-end; // reenableUserInteraction
+end; // reEnableUserInteraction
 
 function banAddress(fs: TFileServer; ip: String): Boolean;
 var
@@ -1394,16 +1394,6 @@ begin
     fs.kickByIP(ip);
   result := TRUE;
 end; // banAddress
-
-function prog(p: real): Boolean;
-begin
-   Result := True;
-   if not progFrm.visible then
-     Exit;
-   progFrm.progress := p;
-   application.processMessages();
-   Result := not progFrm.cancelRequested;
-end;
 
 function shouldRecur(data: TconnData): boolean;
 begin
@@ -1584,7 +1574,7 @@ procedure TmainFrm.findExtOnStartupChkClick(Sender: TObject);
 begin
 with sender as TMenuItem do
   if dyndns.active and (dyndns.url > '') and checked then
-    checked:= msgDlg(MSG_NOT_COMPAT, MB_ICONWARNING+MB_YESNO) = MRYES;
+    checked := msgDlg(MSG_NOT_COMPAT, MB_ICONWARNING+MB_YESNO) = MRYES;
 end;
 
 procedure setupDownloadIcon(data: TconnData);
@@ -2031,8 +2021,8 @@ var
   i: Integer;
 begin
   result := '';
-  if showProgress then
-    b := getFileMD5(fn, Prog)
+  if showProgress and Assigned(progFrm) then
+    b := getFileMD5(fn, progFrm.doProg)
    else
     b := getFileMD5(fn, NIL);
   for i :=0 to 15 do
@@ -3302,7 +3292,7 @@ for i:=0 to length(MIMEtypes)-1 do
   updateCurrentCFG();
 end; // setcfg
 
-function loadCfg(var ini, tpl: String): Boolean;
+function loadCfg(var ini: String; Const tpl: String): Boolean;
 
   // until 2.2 the template could be kept in the registry, so we need to move it now.
   // returns true if the registry source can be deleted
@@ -4123,14 +4113,14 @@ var
     f: Tfile;
     n: TFileNode;
   begin
-  purgeConnections();
+    purgeConnections();
 
   // see the filesBoxEditing event for an explanation of the following lines
   if not filesBox.IsEditing and (remove1.ShortCut = 0) then
     begin
-    remove1.ShortCut:=TextToShortCut('Del');
-    Paste1.ShortCut:=TextToShortCut('Ctrl+V');
-    copyURL1.ShortCut:=TextToShortCut('Ctrl+C');
+    remove1.ShortCut := TextToShortCut('Del');
+    Paste1.ShortCut := TextToShortCut('Ctrl+V');
+    copyURL1.ShortCut := TextToShortCut('Ctrl+C');
     end;
 
   with optionsFrm do
@@ -4153,15 +4143,16 @@ var
     filesToAddQ:=NIL;
     end;
 
-  if itsTimeFor(searchLogTime) then
-    if searchLog(0) then logSearchBox.Color:=clWindow
-    else
-      begin
-      logSearchBox.Color:=BG_ERROR;
-      searchLogWhiteTime:=now_+5/SECONDS;
-      end;
-  if itsTimeFor(searchLogWhiteTime) then
-    logSearchBox.Color:=clWindow;
+    if itsTimeFor(searchLogTime) then
+      if searchLog(0) then
+        logSearchBox.Color:=clWindow
+       else
+        begin
+          logSearchBox.Color:=BG_ERROR;
+          searchLogWhiteTime:=now_+5/SECONDS;
+        end;
+    if itsTimeFor(searchLogWhiteTime) then
+      logSearchBox.Color := clWindow;
 
   end; // everyTenth
 
@@ -4173,17 +4164,18 @@ var
 var
   bak: boolean;
 begin
-if quitASAP and not quitting and not queryingClose then
+  if quitASAP and not quitting and not queryingClose then
   begin
-  { close is not effective when lockTimerevent is TRUE, so we force it TRUE. }
-  { it should not be necessary, but we want to be sure to quit even with bugs. }
-  bak:=lockTimerevent;
-  lockTimerevent:=FALSE;
-  application.MainForm.Close();
-  lockTimerevent:=bak;
+    { close is not effective when lockTimerevent is TRUE, so we force it TRUE. }
+    { it should not be necessary, but we want to be sure to quit even with bugs. }
+    bak:=lockTimerevent;
+    lockTimerevent:=FALSE;
+    application.MainForm.Close();
+    lockTimerevent:=bak;
   end; // quit
-if not timer.enabled or quitting or lockTimerevent then exit;
-lockTimerevent:=TRUE;
+  if not timer.enabled or quitting or lockTimerevent then
+    exit;
+  lockTimerevent := TRUE;
 try
   // idk how it can be, but sometimes this now() call causes an AV http://www.rejetto.com/forum/index.php?topic=6371.msg1038634#msg1038634
   try now_:=now()
@@ -4737,8 +4729,9 @@ end;
 
 procedure TmainFrm.splitVMoved(Sender: TObject);
 begin
-if logBox.width > 0 then lastGoodLogWidth:=logBox.width;
-filesBoxRatio:=filesPnl.Width/ClientWidth
+  if logBox.width > 0 then
+    lastGoodLogWidth := logBox.width;
+  filesBoxRatio := filesPnl.Width/ClientWidth
 end;
 
 procedure TmainFrm.appEventsShowHint(var HintStr: String; var CanShow: Boolean; var HintInfo: THintInfo);
@@ -5027,9 +5020,9 @@ procedure TmainFrm.Saveas1Click(Sender: TObject);
 var
   fn: string;
 begin
-fn:='';
-if PromptForFileName(fn, 'Text file|*.txt', 'txt', 'Save log', '', TRUE) then
-  savefileU(fn, logBox.text);
+  fn := '';
+  if PromptForFileName(fn, 'Text file|*.txt', 'txt', 'Save log', '', TRUE) then
+    savefileU(fn, logBox.text);
 end;
 
 procedure TmainFrm.Save1Click(Sender: TObject);

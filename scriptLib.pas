@@ -2463,6 +2463,8 @@ begin
               stringExists(par(1),['','users']),
               stringExists(par(1),['','groups'])
             ))
+          else if p = 'is archive' then
+            trueIf(md.f.isArchive())
           ;
          except
           unsatisfied()

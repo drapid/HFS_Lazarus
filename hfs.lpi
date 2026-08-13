@@ -247,8 +247,11 @@
       </Options>
     </Linking>
     <Other>
-      <OtherDefines Count="1">
-        <Define0 Value="USE_MORMOT_COLLECTIONS"/>
+      <CustomOptions Value="-dUSE_SYMCRYPTO
+-dUSE_MORMOT_COLLECTIONS"/>
+      <OtherDefines Count="2">
+        <Define0 Value="USE_SYMCRYPTO"/>
+        <Define1 Value="USE_MORMOT_COLLECTIONS"/>
       </OtherDefines>
       <ExecuteBefore>
         <Command Value="BuiltTime.exe"/>

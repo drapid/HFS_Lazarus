@@ -98,6 +98,7 @@ type
     function  isRealFolder():boolean; inline;
     function  isVirtualFolder():boolean; inline;
     function  isEmptyFolder(loadPrefs: TLoadPrefs; cd:TconnDataMain=NIL):boolean;
+    function  isArchive(): Boolean;
     function  isRoot():boolean; inline;
     function  isLink():boolean; inline;
     function  isTemp():boolean; inline;
@@ -236,7 +237,7 @@ uses
   RegExpr,
   RDUtils, RDFileUtil,
   RDSysUtils,
-  RnQZip,
+  RD.Zip,
 //  RnQJSON,
  {$IFDEF USE_MORMOT}
    mormot.core.json,
@@ -1264,6 +1265,15 @@ begin
   result := length(listing.dir) = 0;
   listing.free;
 end; // isEmptyFolder
+
+function Tfile.isArchive(): Boolean;
+begin
+  Result := not ((FA_FOLDER in flags) or (FA_LINK in flags));
+  if Result then
+    begin
+      Result := AnsiSameText(ExtractFileExt(self.resource), '.zip');
+    end;
+end;
 
 // uses comments file
 function Tfile.getDynamicComment(loadPrefs: TLoadPrefs; skipParent: boolean=FALSE): String;

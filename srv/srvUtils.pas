@@ -311,7 +311,7 @@ uses
   mormot.core.collections,
  {$ENDIF USE_MORMOT_COLLECTIONS}
   Base64,
-  RDUtils, RnQCrypt, RnQZip,
+  RDUtils, RnQCrypt, RD.Zip,
   {$IFDEF UNICODE}
   ansistrings,
   {$ENDIF UNICODE}
