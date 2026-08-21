@@ -28,7 +28,7 @@
       <UseVersionInfo Value="True"/>
       <MajorVersionNr Value="2"/>
       <MinorVersionNr Value="5"/>
-      <BuildNr Value="323"/>
+      <BuildNr Value="325"/>
       <Attributes pvaPrivateBuild="True"/>
     </VersionInfo>
     <MacroValues Count="1">
@@ -156,7 +156,7 @@
         <ResourceBaseClass Value="Form"/>
       </Unit>
       <Unit>
-        <Filename Value="scriptLib.pas"/>
+        <Filename Value="srv\scriptLib.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -240,11 +240,14 @@
       </Options>
     </Linking>
     <Other>
-      <CustomOptions Value="-dUSE_SYMCRYPTO
--dUSE_MORMOT_COLLECTIONS"/>
-      <OtherDefines Count="2">
-        <Define0 Value="USE_SYMCRYPTO"/>
-        <Define1 Value="USE_MORMOT_COLLECTIONS"/>
+      <CustomOptions Value="-dUSE_MORMOT_COLLECTIONS
+-dUSE_SYMCRYPTO
+-dUSE_MORMOT"/>
+      <OtherDefines Count="4">
+        <Define0 Value="USE_MORMOT_COLLECTIONS"/>
+        <Define1 Value="PROFILE"/>
+        <Define2 Value="USE_SYMCRYPTO"/>
+        <Define3 Value="USE_MORMOT"/>
       </OtherDefines>
       <ExecuteBefore>
         <Command Value="BuiltTime.exe"/>

@@ -597,9 +597,10 @@ function StgOpenStorageEx(const pwcsName: PWideChar; grfMode: DWORD;
 
 implementation
 uses
-  strUtils,
+  //strUtils,
  {$IFDEF FPC}
-  Character, JwaWinNT;
+  //Character,
+  JwaWinNT;
  {$ELSE ~FPC}
   System.Character;
  {$ENDIF FPC}

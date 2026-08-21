@@ -7,44 +7,27 @@ interface
 uses
   // delphi libs
   Windows,
+ {$IFDEF USE_MORMOT}
   mormot.core.base,
+ {$ENDIF USE_MORMOT}
   Classes,
+  System.UITypes,
   //Messages,
   Dialogs,
   Graphics,
   Forms,
-  ComCtrls,
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   Generics.Collections,
   {$ELSE USE_MORMOT_COLLECTIONS}
   mormot.core.collections,
   {$ENDIF USE_MORMOT_COLLECTIONS}
   math, Types, SysUtils,
+  RnQPrefsLib,
   iniFiles,
   srvConst,
   HSLib, srvClassesLib, fileLib;
 
 type
-
-  TShowPrefs = set of (spUseSysIcons, spHttpsUrls, spFoldersBefore, spLinksBefore,
-                       spNoPortInUrl, spEncodeNonascii, spEncodeSpaces, spCompressed,
-                       spNoWaitSysIcons, spSendHFSIdentifier, spFreeLogin,
-                       spStopSpiders, spPreventLeeching,
-                       spDisableMacros, spNonLocalIPDisableMacros,
-                       spPwdInPages, spEnableNoDefault, spDMbrowserTpl,
-                       spRecursiveListing, spOemTar, spNoContentDisposition, spPreventStandby
-                       );
-
-
-  TLogPrefs = set of (logBanned, logIcons, logBrowsing, logProgress,
-                      logServerstart, logServerstop,
-                      logConnections, logDisconnections,
-                      logUploads, logFullDownloads, LogDeletions,
-                      logBytesReceived, logBytesSent, logOnlyServed,
-                      logRequests, logReplies, logOtherEvents,
-                      dumpRequests, dumpTraffic,
-                      logMacros);
-
   TUpdateTrayWhat = set of (utIcon, utTIP);
 
   TFileServer = class;
@@ -107,7 +90,8 @@ type
 
   TFileServer = class(TInterfacedPersistent, IServerTree)
    private class var
-      defaultTpl: Ttpl;
+      fDefaultTpl: Ttpl;
+      noMacrosTpl: Ttpl;
       supportZStd: Boolean;
    private
     userPwdHashCache2: Tstr2str;
@@ -120,7 +104,9 @@ type
     fOnGetLP: TOnGetLP;
     fOnGetLogP: TOnGetLogP;
     fOnAddingItems: TProcedureOfObject;
+    fAllPrefs: TRnQPref;
     fMacroFuncs: TMacroFuncArr;
+    fIPsEverConnected: THashedStringList;
    private
     fOnAdd2Log: TAdd2LogEvent;
     fOnIPsEverChanged: TProcedureOfObject;
@@ -131,11 +117,13 @@ type
     fOnInitConnData: TConnDataEvent;
     fOnRemoveConnData: TConnDataEvent;
     fOnUpdateTray: TProc<TUpdateTrayWhat>;
+    fOnBeforeAddFile: TNotifyEvent;
+    fOnAfterAddFile: TFileAddedEvent;
     fSetStatusBarText: TSetStatusBarText;
 //    fGetFileNode: TFindFileNode;
     class constructor CreateServer;
     class destructor  DestroyServer;
-    constructor Create; OverLoad;
+    class procedure setNMTPL(const tpl: Ttpl); Static;
     function  shouldRecur(data: TconnDataMain): boolean;
     procedure doOnIPsEverChanged;
     procedure doFlash(event: String);
@@ -145,24 +133,28 @@ type
     procedure doInitConnData(data: TconnData);
     procedure doRemoveConnData(data: TconnData);
     procedure doUpdateTray(what: TUpdateTrayWhat);
-    function  fGetHttpSrv: ThttpSrv;
+    procedure initPrefs;
+    procedure clearNodes;
+    function  initRoot: TFile;
+    function  initRootWithNode: TFile;
+    function  getHtSrv: ThttpSrv;
    public
     tpl: Ttpl; // template for generated pages
-    tryApplyMacrosAndSymbols: TMacroApplyFunc;
+    fMainMacroFunc: TmacroCB;
     stopAddingItems: Boolean;
-    constructor Create(pTree: TFileTree; pTryApplyMacrosAndSymbols: TMacroApplyFunc;
+    constructor Create(pTree: TFileTree;
                        pOnGetSP: TOnGetSP; pOnGetLP: TOnGetLP; pOnGetLogP: TOnGetLogP;
                        pOnAddingItems: TProcedureOfObject;
                        pSetStatusBarText: TSetStatusBarText); OverLoad;
+    constructor Create; OverLoad;
     destructor Destroy; OverRide;
     procedure setAdd2LogFunc(doAdd2LogFunc: TAdd2LogEvent);
     procedure registerMacroFunc(const name: String; const func: TMacroFunc); OverLoad;
     procedure registerMacroFunc(const name: String; minParams: Byte; const func: TmacroCB); OverLoad;
     procedure unRegisterMacroFunc(const name: String);
+    function  TryGetMacroFunc(funcName: String; var func: TMacroFunc): Boolean;
     procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = True);
-    function  initRoot: TFile;
-    function  initRootWithNode: TFile;
-    procedure clearNodes;
+    procedure initVFS();
     function  encodeURLA(const s: string; fullEncode: Boolean=FALSE): RawByteString;
     function  encodeURLW(const s: string; fullEncode: Boolean=FALSE): String;
     function  pathTill(fl: Tfile; root: Tfile=NIL; delim: char='\'): String;
@@ -173,14 +165,16 @@ type
     function  tplFromFile(f: Tfile): Ttpl;
     function  getAFolderPage(folder: Tfile; cd: TconnDataMain; otpl: TTpl): UnicodeString;
     function  findFilebyURL(url: UnicodeString; parent: Tfile=NIL; allowTemp: boolean=TRUE): Tfile;
-    function  fileExistsByURL(const url: UnicodeString): Boolean;
+    function  fileExistsByURL(const url: String): Boolean;
     function  uri2disk(url: string; parent: Tfile=NIL; resolveLnk: boolean=TRUE): string;
     function  uri2diskMaybe(const path: String; parent: Tfile=NIL; resolveLnk: Boolean=TRUE): String;
-    function  protoColon(sp: TShowPrefs): String;
+    function  protoColon(sp: TShowPrefs): String; OverLoad;
+    function  protoColon: String; OverLoad;
     function  addFileRecur(f: TFile; parent: TFile=NIL): TFile; OverLoad;
     function  addFileRecur(f: Tfile; parent: TFileNode=NIL): Tfile; OverLoad;
     function  addFileRecur(f: Tfile; parent: TFileNode; var newNode: TFileNode): Tfile; OverLoad;
     function  addFileInt(f: Tfile; parent: TFile): Tfile;
+    function  addFileGUI(f: Tfile; parent: TFileNode; skipComment: boolean): Tfile;
     procedure setVFS(const vfs: RawByteString; pf: TFile; onProgress: TLoadVFSProg);
     procedure setVFSJZ(const vfs: RawByteString; node: TFileNode=NIL; onProgress: TLoadVFSProg = NIL);
     function  removeFile(f: Tfile): Boolean; OverLoad;
@@ -189,11 +183,12 @@ type
     function  existsNodeWithName(const name: string; parent: TFileNode): boolean;
     function  getUniqueNodeName(const start: string; parent: TFileNode): string;
     function  getRootNode: TFileNode;
-    procedure getPage(const sectionName: RawByteString; data: TconnDataMain; f: Tfile=NIL; tpl2use: Ttpl=NIL);
+    procedure getPage(const sectionName: TSectionName; data: TconnDataMain; f: Tfile=NIL; tpl2use: Ttpl=NIL);
     procedure compressReply(cd: TconnDataMain);
     function  conn2data(i: integer): TconnData; inline;
     procedure kickByIP(const ip: String);
     procedure kickAllIdle(const Msg: String);
+    procedure kickByMask(const ipmask, portmask: String);
     procedure httpEventNG(event: ThttpEvent; conn: ThttpConn);
     procedure purgeVFSaccounts();
     function  getSP0: TShowPrefs;
@@ -202,7 +197,7 @@ type
     function  getMainTree: TFileTree;
     procedure setStatusBarText(const s: String; lastFor: Integer);
     procedure DoImageChanged(Sender: TObject; n: TFileNode = NIL);
-    procedure ChangedName(Sender: TObject; Name: String);
+    procedure ChangedName(Sender: TObject; const Name: String);
     function  findNode(f: TObject): TFileNode;
     function  getParentNode(f: TObject): TFileNode;
     function  getFirstChild(f: TObject): TFileNode;
@@ -217,12 +212,20 @@ type
     function  countDownloads(const ip: String=''; const user: String=''; f:Tfile=NIL): Integer;
     function  uptimeStr(): string;
     function  getConnectionsCount: Integer;
+    function  ipsEverConnectedCount: Integer;
+    function  getSpeed(SpeedType: TSpeedType): Real;
+    function  getBytes(SpeedType: TSpeedType): Int64;
     function  countIPs(onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
     procedure syncSP;
     procedure syncLP;
     procedure syncLogP;
     function  getListenPorts(const onlyPref: Boolean = false): String;
     procedure resetTotals;
+    procedure addLimiter(limiter: TspeedLimiter);
+    procedure removeLimiter(limiter: TspeedLimiter);
+    procedure runTplImport;
+    function  runEventScript(const event: String; table: TUnicodeStringDynArray=NIL; cd: TconnDataMain=NIL): String;
+    function  getTPLSection(const section: String): UnicodeString;
     property  SP: TShowPrefs read fSP; // write fOnGetSP;
     property  LP: TLoadPrefs read fLP; // write fOnGetLP;
     property  LogP: TLogPrefs read fLogP; // write fOnGetLogP;
@@ -239,12 +242,18 @@ type
     property  OnInitConnData: TConnDataEvent read fOnInitConnData write fOnInitConnData;
     property  OnRemoveConnData: TConnDataEvent read fOnRemoveConnData write fOnRemoveConnData;
 //    property  onGetFileNode: TFindFileNode read fGetFileNode write fGetFileNode;
+    property  OnBeforeAddFile: TNotifyEvent read fOnBeforeAddFile write fOnBeforeAddFile;
+    property  OnAfterAddFile: TFileAddedEvent read fOnAfterAddFile write fOnAfterAddFile;
     property  MainTree: TFileTree read fMainTree;
     property  rootFile: Tfile read fRootFile;
-    property  htSrv: ThttpSrv read fGetHttpSrv;
+    property  prefs: TRnQPref read fAllPrefs;
+    property  htSrv: ThttpSrv read getHtSrv;
     property  add2LogFunc: TAdd2LogEvent read fOnAdd2Log;
     property  macroFuncs: TMacroFuncArr read fMacroFuncs;
-    class property  defTPL: TTpl read defaultTpl;
+    property  MainMacroFunc:  TMacroCB read fMainMacroFunc;
+    property  IPsEverConnected: THashedStringList read fIPsEverConnected;
+    class property  defTPL: TTpl read fDefaultTpl;
+    class property  nmTPL: TTpl read noMacrosTpl write setNMTPL;
    end;
 
   TconnData = class(TconnDataMain)  // data associated to a client connection
@@ -273,28 +282,22 @@ type
     property lastFile: Tfile read fLastFile write setLastFile;
     constructor create(conn: ThttpConn; pGuiData: TObject);
     destructor Destroy; override;
+    procedure logout();
     function accessFor(f: TFile): Boolean;
     function getHTTPStateString: String;
     function getSpeed: Real;
    end; // Tconndata
 
-type
-  TstringIntPairs = array of record
-    str: string;
-    int: integer;
-   end;
-
 var
   iconMasks: TstringIntPairs;
-  eventScripts: Ttpl;
   currentCFG: string;
   currentCFGhashed: THashedStringList;
 
   function  getAcceptOptions(): TstringDynArray;
-  function  startServer(): Boolean;
-  procedure stopServer();
-  function  restartServer(): boolean;
-  function  changePort(const newVal: String): Boolean;
+  function  startServer(s: ThttpSrv): Boolean;
+  procedure stopServer(s: ThttpSrv);
+  function  restartServer(htSrv: ThttpSrv): boolean;
+  function  changePort(htSrv: ThttpSrv; const newVal: String): Boolean;
   function noLimitsFor(account: Paccount): Boolean;
   function connO2data(p: Tobject): TconnData; inline; overload;
   function isBanned(const address: String; out comment: String): Boolean; overload;
@@ -302,36 +305,44 @@ var
   procedure removeFilesFromComments(files: TStringDynArray; lp: TLoadPrefs);
   function protoColon(fs: TFileServer): String;
   function getLibs: String;
+  function getDynLogFilename(cd: TconnDataMain): String; overload;
 
 implementation
 
 uses
   strutils, DateUtils,
-  mormot.core.unicode,
   OverbyteIcsWSocket,
  {$IFDEF FPC}
   mormot.core.datetime,
   fpJSON,
  {$ELSE ~FPC}
-  //Winapi.WinSock,
   JSON,
  {$IFDEF USE_SSL}
   OverbyteIcsSSLEAY,
  {$ENDIF USE_SSL}
   OverbyteIcsTypes,
  {$ENDIF FPC}
+ {$IFDEF USE_MORMOT}
+  mormot.core.unicode,
   mormot.core.json,
+ {$ENDIF USE_MORMOT}
   netUtils,
   RDUtils, RDFileUtil, RDGlobal, //AnsiClasses,
-  RD.Streams.Lib, RD.Streams.Tar,
-  //RnQCrypt,
+  RD.Streams.Lib,
+ {$IFDEF SERVE_TAR}
+  RD.Streams.Tar,
+ {$ENDIF SERVE_TAR}
+ {$IFDEF SERVE_ZIP}
+  RD.Streams.Zip,
+ {$ENDIF SERVE_ZIP}
+  RnQCrypt,
  {$IFDEF ZIP_ZSTD}
    ZSTDLib,
  {$ENDIF ZIP_ZSTD}
-  RD.zip, RnQLangs, RnQDialogs, RnQJSON,
+  RD.Zip, RnQLangs, RnQDialogs, RnQJSON,
   IconsLib,
-  HSUtils,
-  srvUtils, parserLib, srvVars;
+  HSUtils, Srv.Macroses,
+  srvUtils, scriptLib, srvVars;
 
 resourcestring
   MSG_BETTERSTOP = #13'Going on may lead to problems.'
@@ -380,6 +391,8 @@ resourcestring
   MSG_CON_STATE_REP   = 'replying';
   MSG_CON_STATE_SEND  = 'sending';
   MSG_CON_STATE_DISC  = 'disconnected';
+resourcestring
+  MSG_IPv6_DISABLED = 'IPv6 is disabled';
 
 constructor TfileListing.create(pTree: IServerTree);
 begin
@@ -402,7 +415,9 @@ var
   sortBy: ( SB_NAME, SB_EXT, SB_SIZE, SB_TIME, SB_DL, SB_COMMENT );
 
   function compareExt(const f1, f2: String): Integer;
-  begin result := ansiCompareText(extractFileExt(f1), extractFileExt(f2)) end;
+  begin
+    result := ansiCompareText(extractFileExt(f1), extractFileExt(f2))
+  end;
 
   function compareFiles(item1, item2: Pointer): Integer;
   var
@@ -523,55 +538,6 @@ begin
   qsort( 0, length(dir)-1 );
 end; // sort
 
-function loadDescriptionFile(const lp: TLoadPrefs; const fn: String): String;
-var
-  sa: RawByteString;
-begin
-  result := '';
-  sa := loadFile(fn);
-  if sa = '' then
-    sa := loadFile(fn+'\descript.ion');
-  if (sa > '') and (lpOEMForION in lp) then
-    Result := sa
-   else
-    Result := UnUTF(sa);
-end; // loadDescriptionFile
-
-function escapeIon(const s: String): String;
-begin
-// this escaping method (and also the 2-bytes marker) was reverse-engineered from Total Commander
-  result := escapeNL(s);
-  if result <> s then
-    result := result+#4#$C2;
-end; // escapeIon
-
-function unescapeIon(s: String): String;
-begin
-  if ansiEndsStr(#4#$C2, s) then
-    begin
-      setLength(s, length(s)-2);
-      s := unescapeNL(s);
-    end;
-  result := s;
-end; // unescapeIon
-
-procedure loadIon(const lp: TLoadPrefs; const path: String; comments: TstringList);
-var
-  fn: string;
-  s, l: UnicodeString;
-begin
-  //if not mainfrm.supportDescriptionChk.checked then exit;
-  s := loadDescriptionFile(lp, path);
-  while s > '' do
-    begin
-      l := chopLine(s);
-      if l = '' then
-        continue;
-      fn := chop(nonQuotedPos(' ', l), l);
-      comments.add(dequote(fn)+'='+trim(unescapeIon(l)));
-    end;
-end; // loadIon
-
 function isCommentFile(const lp: TLoadPrefs; const fn: String): Boolean;
 begin
   result := (fn=COMMENTS_FILE)
@@ -586,9 +552,12 @@ begin
   result := NIL;
   if findFirst(mask, faAnyFile, sr) = 0 then
   try
-    repeat addString(sr.name, result)
+    repeat
+      addString(sr.name, result)
     until findNext(sr) <> 0;
-  finally findClose(sr) end;
+   finally
+    findClose(sr)
+  end;
 end; // getFiles
 
 function getDynLogFilename(cd: TconnDataMain): String; overload;
@@ -614,7 +583,7 @@ end; // getDynLogFilename
 
 // returns number of skipped files
 function TfileListing.fromFolder(lp: TLoadPrefs; folder: Tfile; cd: TconnDataMain;
-  recursive:boolean=FALSE; limit:integer=-1; toSkip:integer=-1; doClear:boolean=TRUE):integer;
+  recursive:boolean=FALSE; limit:integer=-1; toSkip:integer=-1; doClear:boolean=TRUE): Integer;
 var
   seeProtected, noEmptyFolders, forArchive: boolean;
   filesFilter, foldersFilter, urlFilesFilter, urlFoldersFilter: string;
@@ -623,7 +592,7 @@ var
   begin
     if not f.isFolder() then
       exit;
-    toSkip:=fromFolder(lp, f, cd, TRUE, limit, toSkip, FALSE);
+    toSkip := fromFolder(lp, f, cd, TRUE, limit, toSkip, FALSE);
   end; // recurOn
 
   procedure addToListing(f: Tfile);
@@ -739,83 +708,88 @@ this would let us have "=" inside the names, but names cannot be assigned
     filteredOut: boolean;
     i: integer;
   begin
-  if (limit >= 0) and (actualCount >= limit) then exit;
-
-  // collect names in the VFS at this level. supposed to be faster than existsNodeWithName().
-  namesInVFS:=NIL;
-   f := folder.getFirstChild();
-  while assigned(f) do
-    begin
-      addString(f.name, namesInVFS);
-      f := f.getNextSibling();
-    end;
-
-  comments := THashedStringList.create();
-  try
-    comments.caseSensitive := FALSE;
-    if FileExists(folder.resource+'\'+COMMENTS_FILE) then
-     try
-       comments.loadFromFile(folder.resource+'\'+COMMENTS_FILE, TEncoding.UTF8);
-      except
-     end;
-    if lpion in LP then
-      loadIon(LP, folder.resource, comments);
-    i:=if_((filesFilter='\') or (urlFilesFilter='\'), faDirectory, faAnyFile);
-    setBit(i, faSysFile, lpSysAttr in LP);
-    setBit(i, faHidden, lpHdnAttr in LP);
-    if findfirst(folder.resource+'\*', i, sr) <> 0 then
+    if (limit >= 0) and (actualCount >= limit) then
       exit;
 
+    // collect names in the VFS at this level. supposed to be faster than existsNodeWithName().
+    namesInVFS:=NIL;
+    f := folder.getFirstChild();
+    while assigned(f) do
+      begin
+        addString(f.name, namesInVFS);
+        f := f.getNextSibling();
+      end;
+
+    comments := THashedStringList.create();
     try
-      extractCommentsWithWildcards();
-      repeat
-        application.ProcessMessages();
-        cd.lastActivityTime:=now();
-        if (timeout > 0) and (cd.lastActivityTime > timeout) then
-          break;
-        // we don't list these entries
-        if (sr.name = '.') or (sr.name = '..')
-        or isCommentFile(LP, sr.name) or isFingerprintFile(LP, sr.name) or sameText(sr.name, DIFF_TPL_FILE)
-        or not hasRightAttributes(LP, sr.attr)
-        or stringExists(sr.name, namesInVFS)
-        then continue;
+      comments.caseSensitive := FALSE;
+      if FileExists(folder.resource+'\'+COMMENTS_FILE) then
+       try
+         comments.loadFromFile(folder.resource+'\'+COMMENTS_FILE, TEncoding.UTF8);
+        except
+       end;
+      if lpion in LP then
+        loadIon(LP, folder.resource, comments);
+      i:=if_((filesFilter='\') or (urlFilesFilter='\'), faDirectory, faAnyFile);
+      setBit(i, faSysFile, lpSysAttr in LP);
+      setBit(i, faHidden, lpHdnAttr in LP);
+      if findfirst(folder.resource+'\*', i, sr) <> 0 then
+        exit;
 
-        filteredOut:=not fileMatch( if_(sr.Attr and faDirectory > 0, foldersFilter, filesFilter), sr.name)
-          or not fileMatch( if_(sr.Attr and faDirectory > 0, urlFoldersFilter, urlFilesFilter), sr.name);
-        // if it's a folder, though it was filtered, we need to recur
-        if filteredOut and (not recursive or (sr.Attr and faDirectory = 0)) then continue;
+      try
+        extractCommentsWithWildcards();
+        repeat
+          application.ProcessMessages();
+          cd.lastActivityTime := now();
+          if (timeout > 0) and (cd.lastActivityTime > timeout) then
+            break;
+          // we don't list these entries
+          if (sr.name = '.') or (sr.name = '..')
+          or isCommentFile(LP, sr.name) or isFingerprintFile(LP, sr.name) or sameText(sr.name, DIFF_TPL_FILE)
+          or not hasRightAttributes(LP, sr.attr)
+          or stringExists(sr.name, namesInVFS)
+          then continue;
 
-        f := Tfile.createTemp(tr, folder.resource+'\'+sr.name, folder); // temporary nodes are bound to the parent's node
-        if (FA_SOLVED_LNK in f.flags) and f.isFolder() then
-          // sorry, but we currently don't support lnk to folders in real-folders
-          begin
-          f.free;
-          continue;
-          end;
-        if filteredOut then
-          begin
-          recurOn(f);
-          // possible children added during recursion are linked back through the node field, so we can safely free the Tfile
-          f.free;
-          continue;
-          end;
+          filteredOut:=not fileMatch( if_(sr.Attr and faDirectory > 0, foldersFilter, filesFilter), sr.name)
+            or not fileMatch( if_(sr.Attr and faDirectory > 0, urlFoldersFilter, urlFilesFilter), sr.name);
+          // if it's a folder, though it was filtered, we need to recur
+          if filteredOut and (not recursive or (sr.Attr and faDirectory = 0)) then continue;
 
-        f.comment := comments.values[sr.name];
-        if f.comment = '' then
-          f.comment := getCommentByMaskFor(sr.name);
-        f.comment := macroQuote(unescapeNL(f.comment));
+          f := Tfile.createTemp(tr, folder.resource+'\'+sr.name, folder); // temporary nodes are bound to the parent's node
+          if (FA_SOLVED_LNK in f.flags) and f.isFolder() then
+            // sorry, but we currently don't support lnk to folders in real-folders
+            begin
+            f.free;
+            continue;
+            end;
+          if filteredOut then
+            begin
+            recurOn(f);
+            // possible children added during recursion are linked back through the node field, so we can safely free the Tfile
+            f.free;
+            continue;
+            end;
 
-        f.size := 0;
-        if f.isFile() then
-          if FA_SOLVED_LNK in f.flags then
-            f.size := sizeOfFile(f.resource)
-          else
-            f.size := int64(sr.FindData.nFileSizeHigh) shl 32 + sr.FindData.nFileSizeLow;
-        f.mtime := filetimeToDatetime(sr.FindData.ftLastWriteTime);
-        addToListing(f);
-      until (findNext(sr) <> 0) or (cd.conn.httpState = HCS_DISCONNECTED) or (limit >= 0) and (actualCount >= limit);
-    finally findClose(sr) end;
-  finally comments.free  end
+          f.comment := comments.values[sr.name];
+          if f.comment = '' then
+            f.comment := getCommentByMaskFor(sr.name);
+          f.comment := macroQuote(unescapeNL(f.comment));
+
+          f.size := 0;
+          if f.isFile() then
+            if FA_SOLVED_LNK in f.flags then
+              f.size := sizeOfFile(f.resource)
+            else
+              f.size := sr.Size; // int64(sr.FindData.nFileSizeHigh) shl 32 + sr.FindData.nFileSizeLow;
+          f.mtime := sr.TimeStamp; // filetimeToDatetime(sr.FindData.ftLastWriteTime);
+          addToListing(f);
+        until (findNext(sr) <> 0) or (cd.conn.httpState = HCS_DISCONNECTED) or (limit >= 0) and (actualCount >= limit);
+       finally
+        findClose(sr)
+      end;
+     finally
+      comments.free
+    end
   end; // includeFilesFromDisk
 
   procedure includeItemsFromVFS();
@@ -823,66 +797,79 @@ this would let us have "=" inside the names, but names cannot be assigned
     f: Tfile;
     sr: TSearchRec;
   begin
-  // this folder has been dinamically generated, thus the node is not actually
-  // its own... skip }
+    // this folder has been dinamically generated, thus the node is not actually
+    // its own... skip }
     if folder.isTemp() then
       exit;
 
-  // include (valid) items from the VFS branch
-  f := folder.getFirstChild;
-  while assigned(f) and (cd.conn.httpState <> HCS_DISCONNECTED)
-  and ((limit < 0) or (actualCount < limit)) do
-    try
-      cd.lastActivityTime:=now();
+    // include (valid) items from the VFS branch
+    f := folder.getFirstChild;
+    while assigned(f) and (cd.conn.httpState <> HCS_DISCONNECTED)
+    and ((limit < 0) or (actualCount < limit)) do
+      try
+        cd.lastActivityTime:=now();
 
-      // watching not allowed, to anyone
-      if (FA_HIDDEN in f.flags) or (FA_HIDDENTREE in f.flags) then continue;
+        // watching not allowed, to anyone
+        if (FA_HIDDEN in f.flags) or (FA_HIDDENTREE in f.flags) then
+          continue;
 
-      // filtered out
-      if not fileMatch( if_(f.isFolder(), foldersfilter, filesfilter), f.name)
-      or not fileMatch( if_(f.isFolder(), urlFoldersfilter, urlFilesfilter), f.name)
-      // in this case we must continue recurring: other virtual items may be contained in this real folder, and this flag doesn't apply to them.
-      or (forArchive and f.isRealFolder() and (FA_DL_FORBIDDEN in f.flags)) then
-        begin
-        if recursive then recurOn(f);
-        continue;
-        end;
+        // filtered out
+        if not fileMatch( if_(f.isFolder(), foldersfilter, filesfilter), f.name)
+        or not fileMatch( if_(f.isFolder(), urlFoldersfilter, urlFilesfilter), f.name)
+        // in this case we must continue recurring: other virtual items may be contained in this real folder, and this flag doesn't apply to them.
+        or (forArchive and f.isRealFolder() and (FA_DL_FORBIDDEN in f.flags)) then
+          begin
+            if recursive then
+              recurOn(f);
+            continue;
+          end;
 
-      if not allowedTo(f) then continue;
+        if not allowedTo(f) then
+          continue;
 
-      if FA_VIRTUAL in f.flags then // links and virtual folders are virtual
-        begin
+        if FA_VIRTUAL in f.flags then // links and virtual folders are virtual
+          begin
+            addToListing(f);
+            continue;
+          end;
+        if FA_UNIT in f.flags then
+          begin
+            if sysutils.directoryExists(f.resource+'\') then
+              addToListing(f);
+            continue;
+          end;
+
+        // try to get more info about this item
+        if findFirst(f.resource, faAnyFile, sr) = 0 then
+          begin
+            try
+              // update size and time
+              with sr.FindData do
+                f.size := sr.Size; // nFileSizeLow+int64(nFileSizeHigh) shl 32;
+              try
+                f.mtime := sr.TimeStamp; // filetimeToDatetime(sr.FindData.ftLastWriteTime);
+               except
+                f.mtime:=0
+              end;
+             finally
+              findClose(sr)
+            end;
+            if not hasRightAttributes(LP, sr.attr) then
+              continue;
+          end
+         else // why findFirst() failed? is it a shared folder?
+          if not sysutils.directoryExists(f.resource) then
+            continue;
         addToListing(f);
-        continue;
-        end;
-      if FA_UNIT in f.flags then
-        begin
-        if sysutils.directoryExists(f.resource+'\') then
-          addToListing(f);
-        continue;
-        end;
-
-      // try to get more info about this item
-      if findFirst(f.resource, faAnyFile, sr) = 0 then
-        begin
-        try
-          // update size and time
-          with sr.FindData do f.size:=nFileSizeLow+int64(nFileSizeHigh) shl 32;
-          try f.mtime:=filetimeToDatetime(sr.FindData.ftLastWriteTime);
-          except f.mtime:=0 end;
-        finally findClose(sr) end;
-        if not hasRightAttributes(LP, sr.attr) then continue;
-        end
-      else // why findFirst() failed? is it a shared folder?
-        if not sysutils.directoryExists(f.resource) then continue;
-      addToListing(f);
-     finally
-       f := f.getNextSibling();
-    end;
+       finally
+         f := f.getNextSibling();
+      end;
   end; // includeItemsFromVFS
 
   function beginsOrEndsBy(const ss: String; const s: String): Boolean;
-  begin result:=ansiStartsText(ss,s) or ansiEndsText(ss,s) end;
+  begin
+    result:=ansiStartsText(ss,s) or ansiEndsText(ss,s)
+  end;
 
   function par(const k: String):string;
   begin
@@ -957,57 +944,86 @@ begin
   {$ELSE ~ZIP_ZSTD}
    supportZStd := false;
   {$ENDIF ZIP_ZSTD}
-  defaultTpl := Ttpl.create(getResText('defaultTpl'));
+  fDefaultTpl := Ttpl.createResource('defaultTpl');
+  noMacrosTpl  := Ttpl.createResource('noMacrosTpl');
   WebPTryLoad;
 end;
 
 class destructor TFileServer.DestroyServer;
 begin
-  defaultTpl.Free;
+  fDefaultTpl.Free;
+  fDefaultTpl := NIL;
+  noMacrosTpl.Free;
+  noMacrosTpl := NIL;
+end;
+
+class procedure TFileServer.setNMTPL(const tpl: Ttpl);
+var
+  t: Ttpl;
+begin
+  if tpl <> NIL then
+    begin
+      t := noMacrosTpl;
+      noMacrosTpl := tpl;
+      if t <> NIL then
+        t.Free;
+    end;
 end;
 
 constructor TFileServer.Create;
 begin
   Self.fRootFile := NIL;
   userPwdHashCache2 := NIL;
+  fAllPrefs := TRnQPref.Create;
 end;
 
-constructor TFileServer.Create(pTree: TFileTree; pTryApplyMacrosAndSymbols: TMacroApplyFunc;
+constructor TFileServer.Create(pTree: TFileTree; //pTryApplyMacrosAndSymbols: TMacroApplyFunc;
                        pOnGetSP: TOnGetSP; pOnGetLP: TOnGetLP; pOnGetLogP: TOnGetLogP;
                        pOnAddingItems: TProcedureOfObject;
                        pSetStatusBarText: TSetStatusBarText);
 begin
   fMainTree := pTree;
-  tryApplyMacrosAndSymbols := pTryApplyMacrosAndSymbols;
+  fMainMacroFunc := Srv.Macroses.cbMacros;
+  fAllPrefs := TRnQPref.Create;
   fOnGetSP := pOnGetSP;
   fOnGetLP := pOnGetLP;
   fOnGetLogP := pOnGetLogP;
+  initPrefs;
   onAddingItems := pOnAddingItems;
   fSetStatusBarText := pSetStatusBarText;
   Self.fRootFile := NIL;
   userPwdHashCache2 := NIL;
-  tpl := Ttpl.create(RawByteString(''), defaultTpl);
-  srv := ThttpSrv.create();
-  srv.autoFreeDisconnectedClients := FALSE;
-  srv.limiters.add(globalLimiter);
-  srv.onEvent := Self.httpEventNG;
-  sessions := Tsessions.create();
+  tpl := Ttpl.create(RawByteString(''), fDefaultTpl);
+  srvVars.srv := ThttpSrv.create();
+  srvVars.srv.autoFreeDisconnectedClients := FALSE;
+  srvVars.srv.limiters.add(globalLimiter);
+  srvVars.srv.onEvent := Self.httpEventNG;
+  srvVars.srv.useIPv6 := useIPv6;
+  sessions := Tsessions.create(srvVars.srv);
   {$IFNDEF USE_MORMOT_COLLECTIONS}
     fMacroFuncs := TMacroFuncArr.Create();
   {$ELSE USE_MORMOT_COLLECTIONS}
 //    fMacroFuncs := Collections.NewKeyValue<String, TMacroFunc>;
     fMacroFuncs := Collections.NewPlainKeyValue<String, TMacroFunc>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
+  fIPsEverConnected := THashedStringList.create();
+  fIPsEverConnected.sorted:=TRUE;
+  fIPsEverConnected.duplicates:=dupIgnore;
+  fIPsEverConnected.delimiter:=';';
+  if not useIPv6 then
+    add2Log(MSG_IPv6_DISABLED, NIL, clBlue);
 end;
 
 destructor TFileServer.Destroy;
 begin
-  srv.onEvent := NIL;
-  srv.Free;
-  Srv := NIL;
+  srvVars.srv.onEvent := NIL;
+  srvVars.srv.Free;
+  srvVars.Srv := NIL;
   tpl.free;
   tpl := NIL;
   fMacroFuncs := NIL;
+  fIPsEverConnected.free;
+  fIPsEverConnected := NIL;
 end;
 
 procedure TFileServer.setAdd2LogFunc(doAdd2LogFunc: TAdd2LogEvent);
@@ -1034,6 +1050,15 @@ begin
   fMacroFuncs.Remove(name);
 end;
 
+function TFileServer.TryGetMacroFunc(funcName: String; var func: TMacroFunc): Boolean;
+begin
+  Result := macroFuncs.ContainsKey(funcName);
+  if Result then
+    begin
+      Result := macroFuncs.TryGetValue(funcName, func);
+    end;
+end;
+
 procedure TFileServer.setStatusBarText(const s: String; lastFor: Integer);
 begin
   if Assigned(fSetStatusBarText) then
@@ -1043,7 +1068,8 @@ end;
 function TFileServer.initRoot: TFile;
 begin
   fRootFile := Tfile.createVirtualFolder(Self, '/');
-  rootFile.flags := rootFile.flags+[FA_ROOT, FA_ARCHIVABLE];
+  rootFile.setAttr(FA_ROOT, True);
+  rootFile.setAttr(FA_ARCHIVABLE, True);
   rootFile.dontCountAsDownloadMask := '*.htm;*.html;*.css';
   rootFile.defaultFileMask := 'index.html;index.htm;default.html;default.htm';
   Result := rootFile;
@@ -1059,21 +1085,45 @@ procedure TFileServer.clearNodes;
 var
   n: TFileNode;
 begin
+  fRootFile := NIL;
+  fMainTree.Items.Clear;
   n := getRootNode;
   if assigned(n) then
    begin
+   {$IFDEF USE_VTV}
+     fMainTree.DeleteNode(n);
+   {$ELSE ~USE_VTV}
+     n.Data := NIL;
      n.Delete();
+   {$ENDIF ~USE_VTV}
    end;
 end;
 
-function TFileServer.encodeURLA(const s: String; fullEncode:boolean=FALSE): RawByteString;
+procedure TFileServer.initVFS();
+var
+  n: TFileNode;
+begin
+  uploadPaths := NIL;
+  clearNodes;
+  initRootWithNode;
+  if fMainTree.Items.Count > 1 then  // ????????????????? Why its more than 1??????????????
+    begin
+      add2Log('Some strange behavior. More than one root node. Deleting first node');
+      n := fMainTree.Items.GetFirstNode;
+      n.Data := NIL;
+      n.Delete;
+    end;
+  VFSmodified := FALSE;
+end;
+
+function TFileServer.encodeURLA(const s: String; fullEncode: Boolean=FALSE): RawByteString;
 var
   r: RawByteString;
 begin
   if fullEncode or (spEncodeNonAscii in SP) then
     begin
 //      r := ansiToUTF8(s);
-      r := StringToUtf8(s);
+      r := StrToUTF8(s);
       result := HSUtils.encodeURL(r, (spEncodeNonAscii in SP),
         fullEncode or (spEncodeSpaces in SP))
     end
@@ -1086,10 +1136,12 @@ function TFileServer.encodeURLW(const s: String; fullEncode:boolean=FALSE): Stri
 var
   r: RawByteString;
 begin
+  if s = '' then
+    Exit('');
   if fullEncode or (spEncodeNonAscii in SP) then
     begin
 //      r := ansiToUTF8(s);
-      r := StringToUtf8(s);
+      r := StrToUtf8(s);
       result := HSUtils.encodeURL(r, (spEncodeNonAscii in SP),
         fullEncode or (spEncodeSpaces in SP))
     end
@@ -1120,9 +1172,9 @@ function TFileServer.findFilebyURL(url: UnicodeString; parent: Tfile=NIL; allowT
     result := Tfile.createTemp(Self, s, f); // temp nodes are bound to parent's node
     // the temp file inherits flags from the real folder
     if FA_DONT_LOG in f.flags then
-      include(result.flags, FA_DONT_LOG);
+      Result.setAttr(FA_DONT_LOG, True);
     if not (FA_BROWSABLE in f.flags) then
-      exclude(result.flags, FA_BROWSABLE);
+      Result.setAttr(FA_BROWSABLE, False);
   end; // workTheRestByReal
 
 var
@@ -1194,7 +1246,11 @@ begin
       exit; // no support for null filenames
     found := FALSE;
     // search inside the VFS
+    {$IFDEF USE_VTV}
+    n := cur.FirstChild;
+    {$ELSE ~USE_VTV}
     n := cur.getFirstChild();
+    {$ENDIF ~USE_VTV}
     while assigned(n) do
     begin
 //    found := stringExists(n.text, s) or sameText(n.text, UTF8toAnsi(s));
@@ -1202,7 +1258,11 @@ begin
       found := sameText(nodetext(n), s);
     if found then
       break;
+    {$IFDEF USE_VTV}
+    n := n.NextSibling;
+    {$ELSE ~USE_VTV}
     n := n.getNextSibling();
+    {$ENDIF ~USE_VTV}
     end;
     if not found then // this piece was not found the virtual way
      begin
@@ -1223,7 +1283,7 @@ begin
   result := TFile(nodeToFile(cur));
 end; // findFileByURL
 
-function TFileServer.fileExistsByURL(const url: UnicodeString): boolean;
+function TFileServer.fileExistsByURL(const url: String): boolean;
 var
   f: Tfile;
 begin
@@ -1233,6 +1293,13 @@ begin
 end; // fileExistsByURL
 
 function TFileServer.protoColon(sp: TShowPrefs): String;
+const
+  LUT: array [boolean] of string = ('http://','https://');
+begin
+  result := LUT[spHttpsUrls in sp];
+end; // protoColon
+
+function TFileServer.protoColon: String;
 const
   LUT: array [boolean] of string = ('http://','https://');
 begin
@@ -1309,17 +1376,18 @@ begin
   if f.isLink() then
     result:= f.relativeURL(fullEncode)
    else
-    result:='/'+encodeURLW(pathTill(f, rootFile, '/'), fullEncode)
+    result := '/'+encodeURLW(pathTill(f, rootFile, '/'), fullEncode)
      +if_(f.isFolder() and not f.isRoot(), String('/'));
 end; // url
 
-function TFileServer.parentURL(f: Tfile): string;
+function TFileServer.parentURL(f: Tfile): String;
 var
   i: integer;
 begin
-  result:=url(f, TRUE);
-  i:=length(result)-1;
-  while (i > 1) and (result[i] <> '/') do dec(i);
+  result := url(f, TRUE);
+  i := length(result)-1;
+  while (i > 1) and (result[i] <> '/') do
+    dec(i);
   setlength(result,i);
 end; // parentURL
 
@@ -1349,10 +1417,10 @@ begin
   result := url(f);
   if f.isLink() then
     exit;
-  if assigned(srv) and srv.active
-     and (srv.port <> '80') and (pos(':',ip) = 0)
+  if assigned(srvVars.srv) and srvVars.srv.active
+     and (srvVars.srv.port <> '80') and (pos(':',ip) = 0)
      and not (spNoPortInUrl in sp) then
-    result := ':'+srv.port+result;
+    result := ':' +srvVars.srv.port+result;
   if ip = '' then
     ip:=defaultIP;
   if Pos(':',ip, Pos(':',ip)+1) > 0 then // ipv6
@@ -1490,7 +1558,7 @@ var
           if recur then
             s:=copy(self.url(f, fullEncode), ofsRelUrl, MAXINT)+fingerprint
            else
-            s:=f.relativeURL(fullEncode)+fingerprint;
+            s:=f.relativeURL(fullEncode or (spEncodeNonAscii in SP))+fingerprint;
           url:=baseurl+s;
         end;
 
@@ -1539,8 +1607,8 @@ var
 
   function shouldRecur(cd: TconnDataMain): Boolean;
   begin
-    Result := (lpRecurListing in lp) and cd.allowRecur;
-
+//    Result := (lpRecurListing in lp) and cd.allowRecur;
+    Result := (spRecursiveListing in SP) and cd.allowRecur;
   end;
 var
   n, i: integer;
@@ -1582,18 +1650,18 @@ try
   if useList and not antiDos.accept(cd.conn, cd.address) then
     exit(cd.conn.reply.body);
 
-  fullEncode:=FALSE;
-  ofsRelUrl:=length(url(folder, fullEncode))+1;
-  ofsRelItemUrl:=length(pathTill(folder))+1;
+  fullEncode := FALSE;
+  ofsRelUrl := length(url(folder, fullEncode))+1;
+  ofsRelItemUrl := length(pathTill(folder))+1;
   // pathTill() is '/' for root, and 'just/folder', so we must accordingly consider a starting and trailing '/' for the latter case (bugfix by mars)
   if not folder.isRoot() then
     inc(ofsRelItemUrl, 2);
 
   ZeroMemory(@md, sizeOf(md));
-  md.cd:=cd;
-  md.tpl:=diffTpl;
-  md.folder:=folder;
-  md.archiveAvailable:=folder.hasRecursive(FA_ARCHIVABLE) and not folder.isDLforbidden();
+  md.cd := cd;
+  md.tpl := diffTpl;
+  md.folder := folder;
+  md.archiveAvailable := folder.hasRecursive(FA_ARCHIVABLE) and not folder.isDLforbidden();
   md.hideExt := folder.hasRecursive(FA_HIDE_EXT);
 
   result := diffTpl['special:begin'];
@@ -1713,10 +1781,7 @@ var
 begin
   result := FALSE;
   if parent = NIL then
-    begin
-      if Assigned(rootFile) then
-        parent := rootFile.node;
-    end;
+    parent := getRootNode;
   if parent = NIL then
     exit;
   while assigned(parent.data) and not TFile(nodeToFile(parent)).isFolder() do
@@ -1747,15 +1812,17 @@ end; // getUniqueNodeName
 
 function TFileServer.getRootNode: TFileNode;
 begin
+  Result := NIL;
   if Assigned(rootFile) then
     Result := rootFile.node
-   else
-    Result := NIL;
+   else if fMainTree.Items.Count > 0 then
+     Result := fMainTree.Items[0]
+    ;
 end;
 
 function  TFileServer.getMainTree: TFileTree;
 begin
-  Result := MainTree;
+  Result := fMainTree;
 end;
 
 procedure TFileServer.DoImageChanged(Sender: TObject; n: TFileNode = NIL);
@@ -1766,7 +1833,7 @@ begin
   n.SelectedIndex := TFile(Sender).NodeImageindex;
 end;
 
-procedure TFileServer.ChangedName(Sender: TObject; Name: String);
+procedure TFileServer.ChangedName(Sender: TObject; const Name: String);
 var
   n: TFileNode;
 begin
@@ -1774,7 +1841,7 @@ begin
   if Assigned(n) then
     begin
   {$IFDEF USE_VTV}
-      MainTree.InvalidateNode(n);
+      fMainTree.InvalidateNode(n);
   {$ELSE ~USE_VTV}
       n.Text := name;
   {$ENDIF ~USE_VTV}
@@ -1785,8 +1852,8 @@ function TFileServer.findNode(f: TObject): TFileNode;
 var
   n: TFileNode;
 begin
-  if mainTree.Items.Count > 0 then
-    for n in mainTree.Items do
+  if fMainTree.Items.Count > 0 then
+    for n in fMainTree.Items do
       if n.Data = f then
         Exit(n);
   Result := NIL;
@@ -1832,7 +1899,7 @@ begin
   n := findNode(f);
   if Assigned(n) then
    {$IFDEF USE_VTV}
-    MainTree.DeleteChildren(n);
+    fMainTree.DeleteChildren(n);
    {$ELSE ~USE_VTV}
     n.DeleteChildren;
    {$ENDIF ~USE_VTV}
@@ -1906,16 +1973,43 @@ begin
   Result := htSrv.conns.Count;
 end;
 
-function TFileServer.countIPs(onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
+function TFileServer.ipsEverConnectedCount: Integer;
 begin
-  //Result := srvClassesLib.countIPs(htSrv, onlyDownloading, usersInsteadOfIps);
-  Result := srvClassesLib.countIPs(onlyDownloading, usersInsteadOfIps);
+  Result := IPsEverConnected.Count;
 end;
 
-function TFileServer.fGetHttpSrv: ThttpSrv;
+function TFileServer.getSpeed(SpeedType: TSpeedType): Real;
 begin
-  Result := srv;
+  if SpeedType = ST_OUTCOME then
+    Result := srvVars.srv.speedOut
+  else if SpeedType = ST_INCOME then
+    Result := srvVars.srv.speedIn
+//  else if SpeedType = ST_AVERAGE then
+  else
+    Result := 0;
 end;
+
+function TFileServer.getBytes(SpeedType: TSpeedType): Int64;
+begin
+  if SpeedType = ST_OUTCOME then
+    Result := srvVars.srv.bytesSent
+  else if SpeedType = ST_INCOME then
+    Result := srvVars.srv.bytesReceived
+//  else if SpeedType = ST_AVERAGE then
+  else
+    Result := 0;
+end;
+
+function TFileServer.countIPs(onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
+begin
+  Result := srvClassesLib.countIPs(htSrv, onlyDownloading, usersInsteadOfIps);
+end;
+
+function TFileServer.getHtSrv: ThttpSrv;
+begin
+  Result := srvVars.srv;
+end;
+
 procedure TFileServer.setVFS(const vfs: RawByteString; pf: TFile; onProgress: TLoadVFSProg);
 var
   data2: RawByteString;
@@ -1924,6 +2018,7 @@ var
     resetLetBrowse: boolean;
    end;
   act: TfileAction;
+  fl: TfileAttributes;
   tlv: Ttlv;
   doCancel: Boolean;
 
@@ -1969,7 +2064,7 @@ begin
         begin
         setVFS(data2, rootFile, onProgress);
         if loadingVFS.build < '109' then
-          include(pf.flags, FA_ARCHIVABLE);
+          pf.setAttr(FA_ARCHIVABLE, True);
         end;
       FK_NODE:
         begin
@@ -1990,7 +2085,7 @@ begin
   //        data := ZDecompressStr2(data+#0, 31);
           data2 := ZDecompressStr3(data2+#0, TZStreamType.zsGZip);
           if isAnyMacroIn(data2) then
-            loadingVFS.macrosFound:=TRUE;
+            loadingVFS.macrosFound := TRUE;
           setVFS(data2, pf, onProgress);
          except
           MessageDlg(MSG_ZLIB, mtError, [mbOk])
@@ -2023,7 +2118,11 @@ begin
         begin
           pf.SetName(UnUTF(data2));
         end;
-      FK_FLAGS: move(data2[1], pf.flags, min(length(data2), SizeOf(pf.flags)));
+      FK_FLAGS: begin
+                  fl := pf.flags;
+                  move(data2[1], fl, min(length(data2), SizeOf(fl)));
+                  pf.initFlags(fl);
+                end;
       FK_ADDEDTIME: pf.atime := dt_(data2);
       FK_COMMENT: pf.comment := UnUTF(data2);
       FK_USERPWD:
@@ -2051,7 +2150,8 @@ begin
       FK_DEFAULTMASK: pf.defaultFileMask := UnUTF(data2);
       FK_DIFF_TPL: pf.diffTpl := UnUTF(data2);
       FK_DONTCOUNTASDOWNLOADMASK: pf.dontCountAsDownloadMask := UnUTF(data2);
-      FK_DONTCOUNTASDOWNLOAD: if boolean(data2[1]) then include(pf.flags, FA_DONT_COUNT_AS_DL);  // legacy, now moved into flags
+      FK_DONTCOUNTASDOWNLOAD: if boolean(data2[1]) then
+                                pf.setAttr(FA_DONT_COUNT_AS_DL, True);  // legacy, now moved into flags
   {$IFDEF HFS_GIF_IMAGES}
       FK_ICON_GIF: if data2 > '' then pf.setupImage(spUseSysIcons in sp, str2pic(data2));
   {$ELSE ~HFS_GIF_IMAGES}
@@ -2167,6 +2267,7 @@ var
     idx: Integer;
     zi: Integer;
     dt: TDateTime;
+    fl: TfileAttributes;
   begin
     Result := True;
     if v = '1' then // FK_RESOURCE
@@ -2181,7 +2282,9 @@ var
       begin
         d := value.Value;
         i := value.AsInteger;
-        move(i, pf.flags, min(SizeOf(i), SizeOf(pf.flags)));
+        fl := pf.flags;
+        move(i, fl, min(SizeOf(i), SizeOf(fl)));
+        pf.initFlags(fl);
       end
     else if v = '7' then // FK_COMMENT
       begin
@@ -2425,7 +2528,9 @@ var
             v := dj1.Key
            else
             v := '';
-          if v='4' then // FK_NODE
+          if v='5' then
+           // Do nothing yet
+          else if v='4' then // FK_NODE
             begin
               if Assigned(onProgress) then
                 onProgress(Self, prgFrom + step * i2, doCancel);
@@ -2559,7 +2664,7 @@ begin
   Result := addFileRecur(f, pn, n);
 end;
 
-function TFileServer.addFileRecur(f:Tfile; parent: TFileNode=NIL): Tfile;
+function TFileServer.addFileRecur(f: Tfile; parent: TFileNode=NIL): Tfile;
 var
   n: TFileNode;
 begin
@@ -2578,8 +2683,7 @@ begin
     exit;
 
   if parent = NIL then
-    if Assigned(rootFile) then
-      parent := rootFile.node;
+    parent := getRootNode;
 
   if Assigned(fOnAddingItems) then
     fOnAddingItems();
@@ -2601,7 +2705,7 @@ begin
   // test for duplicate. it often happens when you have a shortcut to a file.
   if existsNodeWithName(f.name, parent) then
     begin
-    result:=NIL;
+    result := NIL;
     exit;
     end;
 
@@ -2625,23 +2729,30 @@ begin
     except
     end;
 
-  if (f.resource = '') or not f.isVirtualFolder() then exit;
+  if (f.resource = '') or not f.isVirtualFolder() then
+    exit;
   // virtual folders must be run at addition-time
-  if findFirst(f.resource+'\*',faAnyfile, sr) <> 0 then exit;
+  if findFirst(f.resource+'\*',faAnyfile, sr) <> 0 then
+    exit;
   try
     repeat
-    if stopAddingItems then break;
-    if (sr.name[1] = '.')
-    or isFingerprintFile(lp, sr.name) or isCommentFile(lp, sr.name) then continue;
-    newF := Tfile.create(Self, f.resource+'\'+sr.name);
-    if newF.isFolder() then include(newF.flags, FA_VIRTUAL);
-    if addfileRecur(newF, newNode) = NIL then
-      freeAndNIL(newF);
+      if stopAddingItems then
+        break;
+      if (sr.name[1] = '.')
+         or isFingerprintFile(lp, sr.name) or isCommentFile(lp, sr.name) then
+        continue;
+      newF := Tfile.create(Self, f.resource+'\'+sr.name);
+      if newF.isFolder() then
+        newF.setAttr(FA_VIRTUAL, True);
+      if addfileRecur(newF, newNode) = NIL then
+        freeAndNIL(newF);
     until findnext(sr) <> 0;
-  finally FindClose(sr) end;
+   finally
+    FindClose(sr)
+  end;
 end; // addFileRecur
 
-function TFileServer.addFileInt(f:Tfile; parent: TFile): Tfile;
+function TFileServer.addFileInt(f: Tfile; parent: TFile): Tfile;
 begin
   stopAddingItems := FALSE;
   result := Self.addFileRecur(f, parent);
@@ -2649,6 +2760,23 @@ begin
     exit;
   if stopAddingItems then
     MessageDlg(MSG_FILE_ADD_ABORT, mtWarning, []);
+end;
+
+function TFileServer.addFileGUI(f: Tfile; parent: TFileNode; skipComment: boolean): Tfile;
+var
+  newNode: TFileNode;
+begin
+  Result := NIL;
+  Self.stopAddingItems := false;
+  if Assigned(fOnBeforeAddFile) then
+    fOnBeforeAddFile(f);
+  try
+    if not Self.stopAddingItems then
+      result := Self.addFileRecur(f, parent, newNode);
+   finally
+    if Assigned(fOnAfterAddFile) then
+      fOnAfterAddFile(Result, parent, newNode, skipComment, stopAddingItems);
+  end;
 end;
 
 function TFileServer.removeFile(f: Tfile): Boolean;
@@ -2684,20 +2812,23 @@ var
   isRoot: Boolean;
 begin
   isRoot := f = Self.rootFile;
-// the test on uploadPaths may save some function call
-  if assigned(f.accounts[FA_UPLOAD]) and assigned(uploadPaths) then
-    removeString(f.resource, uploadPaths);
-  try
-    f.free
-   except
-  end;
+  if f <> NIL then
+    begin
+    // the test on uploadPaths may save some function call
+      if assigned(f.accounts[FA_UPLOAD]) and assigned(uploadPaths) then
+        removeString(f.resource, uploadPaths);
+      try
+        f.free
+       except
+      end;
+      VFSmodified := TRUE
+    end;
   if isRoot then
 //    rootNode := NIL;
     Self.fRootFile := NIL;
-  VFSmodified := TRUE
 end;
 
-procedure TFileServer.getPage(const sectionName: RawByteString; data: TconnDataMain; f:Tfile=NIL; tpl2use: Ttpl=NIL);
+procedure TFileServer.getPage(const sectionName: TSectionName; data: TconnDataMain; f:Tfile=NIL; tpl2use: Ttpl=NIL);
 var
   md: TmacroData;
 
@@ -2709,7 +2840,7 @@ var
     perc: real;
     bytes, total: int64;
   begin
-    if sectionName <> 'progress' then
+    if sectionName <> TSectionName('progress') then
       exit;
 
     bytes := 0; total := 0; // shut up compiler
@@ -2717,9 +2848,9 @@ var
     i := -1;
     repeat // a while-loop would look better but would lead to heavy indentation
       inc(i);
-      if i >= srv.conns.count then
+      if i >= htSrv.conns.count then
         break;
-      d := conn2dataMain(i);
+      d := conn2data(i);
       if d.address <> data.address then
         continue;
       fn := '';
@@ -2770,7 +2901,7 @@ var
     files: string;
     i: Integer;
   begin
-    if sectionName <> 'upload' then
+    if sectionName <> TSectionName('upload') then
       exit;
     files := '';
     for i :=1 to 10 do
@@ -2783,7 +2914,7 @@ var
     files: string;
     i: Integer;
   begin
-    if sectionName <> 'upload-results' then
+    if sectionName <> TSectionName('upload-results') then
       exit;
     files := '';
     if length(data.uploadResults) > 0 then
@@ -2815,33 +2946,36 @@ begin
   externalTpl := assigned(tpl2use);
   if not externalTpl then
     tpl2use := tplFromFile(Tfile(first(f, Self.rootFile)));
-  if assigned(data.tpl) then
+  if Assigned(data) then
     begin
-      data.tpl.over := tpl2use.over;
-      tpl2use.over := data.tpl;
+      if assigned(data.tpl) then
+        begin
+          data.tpl.over := tpl2use.over;
+          tpl2use.over := data.tpl;
+        end;
+
+
+      try
+        data.conn.reply.mode:=HRM_REPLY;
+        data.conn.reply.bodyMode := RBM_RAW;
+        data.conn.reply.body := '';
+      except end;
+
+      if sectionName = 'ban' then
+        data.conn.reply.mode:=HRM_DENY
+      else if sectionName = 'deny' then
+        data.conn.reply.mode:=HRM_DENY
+      else if sectionName = 'login' then
+        data.conn.reply.mode:=HRM_DENY
+      else if sectionName = 'not found' then
+        data.conn.reply.mode:=HRM_NOT_FOUND
+      else if sectionName = 'unauthorized' then
+        data.conn.reply.mode:=HRM_UNAUTHORIZED
+      else if sectionName = 'overload' then
+        data.conn.reply.mode:=HRM_OVERLOAD
+      else if sectionName = 'max contemp downloads' then
+        data.conn.reply.mode:=HRM_OVERLOAD;
     end;
-
-
-  try
-    data.conn.reply.mode:=HRM_REPLY;
-    data.conn.reply.bodyMode := RBM_RAW;
-    data.conn.reply.body := '';
-  except end;
-
-  if sectionName = 'ban' then
-    data.conn.reply.mode:=HRM_DENY
-  else if sectionName = 'deny' then
-    data.conn.reply.mode:=HRM_DENY
-  else if sectionName = 'login' then
-    data.conn.reply.mode:=HRM_DENY
-  else if sectionName = 'not found' then
-    data.conn.reply.mode:=HRM_NOT_FOUND
-  else if sectionName = 'unauthorized' then
-    data.conn.reply.mode:=HRM_UNAUTHORIZED
-  else if sectionName = 'overload' then
-    data.conn.reply.mode:=HRM_OVERLOAD
-  else if sectionName = 'max contemp downloads' then
-    data.conn.reply.mode:=HRM_OVERLOAD;
 
   section := tpl2use.getSection(sectionName);
   if section = NIL then exit;
@@ -2923,10 +3057,12 @@ begin
   if s = '' then
     exit;
 
+ {$IFDEF ZIP_ZSTD}
   if lToZstd and not cd.conn.reply.IsCompressed then
     s := ZSTDCompressStr(s)
    else
-    begin 
+ {$ENDIF ~ZIP_ZSTD}
+    begin
     // workaround for IE6 pre-SP2 bug
       if (cd.workaroundForIEutf8  = wi_toDetect) and (cd.agent > '') then
         if reMatch(cd.agent, '^MSIE [4-6]\.', '!') > 0 then // version 6 and before
@@ -2947,20 +3083,20 @@ begin
          )
       then
     begin
-      cd.conn.addHeader('Content-Encoding', RawByteString(cd.conn.reply.comprType));
+      cd.conn.addHeader(RawByteString('Content-Encoding'), RawByteString(cd.conn.reply.comprType));
       cd.conn.reply.body := s;
     end
    else
   if lToZstd then
     begin
       cd.conn.reply.comprType := 'zstd';
-      cd.conn.addHeader('Content-Encoding', RawByteString('zstd'));
+      cd.conn.addHeader(RawByteString('Content-Encoding'), RawByteString('zstd'));
       cd.conn.reply.body := s;
     end
   else if lToGZip then
     begin
       cd.conn.reply.comprType := 'gzip';
-      cd.conn.addHeader('Content-Encoding', RawByteString('gzip'));
+      cd.conn.addHeader(RawByteString('Content-Encoding'), RawByteString('gzip'));
       cd.conn.reply.body := s;
     end
    else
@@ -2969,8 +3105,11 @@ begin
         begin
           if cd.conn.reply.comprType = 'gzip' then
             cd.conn.reply.body := ZDecompressStr3(cd.conn.reply.body)
+ {$IFDEF ZIP_ZSTD}
            else if cd.conn.reply.comprType = 'zstd' then
-            cd.conn.reply.body := ZSTDDecompressStr(cd.conn.reply.body) ;
+            cd.conn.reply.body := ZSTDDecompressStr(cd.conn.reply.body)
+ {$ENDIF ~ZIP_ZSTD}
+          ;
           cd.conn.reply.IsCompressed := False;
         end;
 
@@ -2989,12 +3128,17 @@ function TFileServer.conn2data(i: integer): TconnData;
 var
   cnt: Integer;
 begin
-  cnt := Srv.conns.count;
+  cnt := htSrv.conns.count;
   try
     if i < cnt then
-      result := connO2data(srv.conns[i])
+      result := connO2data(htSrv.conns[i])
     else
-      result := connO2data(srv.offlines[i-cnt])
+      begin
+        if htSrv.offlines.Count > (i-cnt) then
+          Result := connO2data(htSrv.offlines[i-cnt])
+         else
+          Result := NIL;
+      end;
    except
     result := NIL
   end
@@ -3007,16 +3151,16 @@ var
 begin
   result := 0;
   i := 0;
-  while i < srv.conns.count do
+  while i < htSrv.conns.count do
   begin
-  d := conn2data(i);
-  if d.isDownloading
-  and ((f = NIL) or (assigned(d.lastFile) and d.lastFile.same(f)))
-  and ((ip = '') or addressMatch(ip, d.address))
-  and ((user = '') or sameText(user, d.usr))
-  then
-    inc(result);
-  inc(i);
+    d := conn2data(i);
+    if d.isDownloading
+    and ((f = NIL) or (assigned(d.lastFile) and d.lastFile.same(f)))
+    and ((ip = '') or addressMatch(ip, d.address))
+    and ((user = '') or sameText(user, d.usr))
+    then
+      inc(result);
+    inc(i);
   end;
 end;
 
@@ -3042,6 +3186,13 @@ begin
     Result := fOnGetLogP()
    else
     Result := [];
+end;
+
+procedure TFileServer.initPrefs;
+begin
+  prefs.addPrefBool('log-uploads', True);
+  prefs.addPrefBool('log-full-downloads', True);
+  prefs.addPrefBool('log-deletions', True);
 end;
 
 procedure TFileServer.syncSP;
@@ -3124,6 +3275,7 @@ var
   imgurl, s, url: string;
   pic: RawByteString;
   special: (no, graph);
+  ct: TContentTypeType;
 begin
   url := decodeURL(cd.conn.httpRequest.url);
   result := FALSE;
@@ -3156,15 +3308,20 @@ begin
 
   if (special = no) and ((idx < 0) or (idx >= IconsDM.images.count)) then
     exit;
-
+  ct := pngMime;
   case special of
     no: begin
           pic := pic2str(idx, 16);
           if (imgurl > '') and notModified(cd.conn, imgurl + ':' + pic2hash(pic), '') then
             exit(True);
           cd.conn.reply.body := pic;
+          {$IFDEF HFS_GIF_IMAGES}
+          ct := 'image/gif';
+          {$ELSE ~HFS_GIF_IMAGES}
+          ct := pngMime;
+          {$ENDIF HFS_GIF_IMAGES}
         end;
-    graph: cd.conn.reply.body := getGraphPic(cd, sendGraphWidth, sendGraphHeight);
+    graph: cd.conn.reply.body := getGraphPic(cd, graphSamplesLenth, sendGraphWidth, sendGraphHeight, ct);
   end;
 
   result := TRUE;
@@ -3178,11 +3335,7 @@ begin
     exit;
   }
   cd.conn.reply.mode := HRM_REPLY;
-  {$IFDEF HFS_GIF_IMAGES}
-  cd.conn.reply.contentType := 'image/gif';
-  {$ELSE ~HFS_GIF_IMAGES}
-  cd.conn.reply.contentType := 'image/png';
-  {$ENDIF HFS_GIF_IMAGES}
+  cd.conn.reply.contentType := ct;
   cd.conn.reply.bodyMode := RBM_RAW;
   cd.downloadingWhat := DW_ICON;
   cd.lastFN := copy(url,2,1000);
@@ -3199,8 +3352,8 @@ var
   f: Tfile;
   url: UnicodeString;
 
-  Freq, StartCount, StopCount: Int64;
-  TimingSeconds: real;
+//  Freq, StartCount, StopCount: Int64;
+  //TimingSeconds: real;
 
   procedure switchToDefaultFile();
   var
@@ -3360,7 +3513,8 @@ var
       HE_REPLIED:
         if logReplies in logP then
          case conn.reply.mode of
-            HRM_REPLY: if not data.fullDLlogged then add2log(format(MSG_LOG_SERVED, [smartSize(conn.bytesSentLastItem)]) + ' ' + conn.reply.comprType, data);
+            HRM_REPLY: if not data.fullDLlogged then
+                         add2log(format(MSG_LOG_SERVED, [smartSize(conn.bytesSentLastItem)]) + ' ' + conn.reply.comprType, data);
             HRM_REPLY_HEADER: add2log(MSG_LOG_HEAD, data);
             HRM_NOT_MODIFIED: add2log(MSG_LOG_NOT_MOD, data);
             HRM_REDIRECT: add2log(format(MSG_LOG_REDIR, [conn.reply.url]), data);
@@ -3415,9 +3569,9 @@ var
   begin
   if noLimitsFor(data.account) then result:=FALSE
   else
-    result:=(maxConnections>0) and (srv.conns.count > maxConnections)
+    result:=(maxConnections>0) and (htSrv.conns.count > maxConnections)
       or (maxConnectionsIP>0)
-        and (countConnectionsByIP(data.address) > maxConnectionsIP)
+        and (countConnectionsByIP(htSrv, data.address) > maxConnectionsIP)
       or (maxIPs>0) and (countIPs() > maxIPs)
   end; // limitsExceededOnConnection
 
@@ -3446,7 +3600,7 @@ var
     if not result then
       exit;
     data.countAsDownload:=FALSE;
-    self.getPage(if_(was=data.disconnectReason, RawByteString('max contemp downloads'), 'deny'), data);
+    self.getPage(if_(was=data.disconnectReason, RawByteString('max contemp downloads'), RawByteString('deny')), data);
   end; // limitsExceededOnDownload
 
   procedure extractParams();
@@ -3639,7 +3793,7 @@ var
        data.pwd:=data.account.pwd;
       end;
   end; // sessionSetup
-
+ {$IFDEF SERVE_TAR}
   procedure serveTar();
   var
     tar: TtarStream;
@@ -3693,33 +3847,35 @@ var
       ft: Tfile;
       s: String;
     begin
-    selection:=FALSE;
-    for s in data.getFilesSelection() do
+      selection := FALSE;
+      for s in data.getFilesSelection() do
         begin
-        selection:=TRUE;
-        if dirCrossing(s) then
-          continue;
-        ft := Self.findFilebyURL(s, f);
-        if ft = NIL then
-          continue;
-        try
-          if not ft.accessFor(data) then
+          selection:=TRUE;
+          if dirCrossing(s) then
             continue;
-          // case folder
-          if ft.isFolder() then
-            begin
-            addFolder(ft, TRUE);
+          ft := Self.findFilebyURL(s, f);
+          if ft = NIL then
             continue;
-            end;
-          // case file
-          if not fileExists(ft.resource) then
-            continue;
-          if noFolders then
-            t:=substr(s, lastDelimiter('\/', s)+1)
-          else
-            t:=s;
-          tar.addFile(ft.resource, t);
-        finally freeIfTemp(ft) end;
+          try
+            if not ft.accessFor(data) then
+              continue;
+            // case folder
+            if ft.isFolder() then
+              begin
+              addFolder(ft, TRUE);
+              continue;
+              end;
+            // case file
+            if not fileExists(ft.resource) then
+              continue;
+            if noFolders then
+              t:=substr(s, lastDelimiter('\/', s)+1)
+            else
+              t:=s;
+            tar.addFile(ft.resource, t);
+           finally
+            freeIfTemp(ft)
+          end;
         end;
     end; // addSelection
 
@@ -3774,6 +3930,196 @@ var
       tar.free
     end;
   end; // serveTar
+ {$ENDIF SERVE_TAR}
+
+ {$IFDEF SERVE_ZIP}
+  procedure serveZip();
+  var
+    arZ: TZipStream;
+    nofolders: boolean;
+    theOnlySelection: String;
+
+    procedure addFolder(f: Tfile; ignoreConnFilters: boolean=FALSE);
+    var
+      i, ofs: integer;
+      listing: TfileListing;
+      fi: Tfile;
+      fIsTemp: boolean;
+      s: string;
+    begin
+      if not f.accessFor(data) then
+        exit;
+      listing := TfileListing.create(Self);
+      try
+        listing.ignoreConnFilter := ignoreConnFilters;
+        listing.timeout := now()+1/MINUTES;
+        listing.fromFolder(lp, f, data, shouldRecur(data));
+        fIsTemp := f.isTemp();
+        ofs := length(f.resource)-length(f.name)+1;
+        for i:=0 to length(listing.dir)-1 do
+          begin
+          if conn.httpState = HCS_DISCONNECTED then
+            break;
+
+          fi:=listing.dir[i];
+          // we archive only files, folders are just part of the path
+          if not fi.isFile() then continue;
+          if not fi.accessFor(data) then continue;
+
+          // build the full path of this file as it will be in the archive
+          if noFolders then
+            s:=fi.name
+          else if fIsTemp and not (FA_SOLVED_LNK in fi.flags)then
+            s:=copy(fi.resource, ofs, MAXINT) // pathTill won't work this case, because f.parent is an ancestor but not necessarily the parent
+          else
+            s:= self.pathTill(fi, f.parent); // we want the path to include also f, so stop at f.parent
+
+          arZ.addFile(fi.resource, s);
+          end
+       finally
+        listing.free
+      end;
+    end; // addFolder
+
+    function addSelection(): Boolean;
+    var
+      t: string;
+      ft: Tfile;
+      s: String;
+      cnt: Integer;
+    begin
+      Result := False;
+      cnt := 0;
+      theOnlySelection := '';
+      for s in data.getFilesSelection() do
+        begin
+          Result := True;
+          if dirCrossing(s) then
+            continue;
+          ft := Self.findFilebyURL(s, f);
+          if ft = NIL then
+            continue;
+          try
+            if not ft.accessFor(data) then
+              continue;
+            Inc(cnt);
+            // case folder
+            if ft.isFolder() then
+              begin
+              addFolder(ft, TRUE);
+              continue;
+              end;
+            // case file
+            if not fileExists(ft.resource) then
+              continue;
+            if noFolders then
+//              t := substr(s, lastDelimiter('\/', s)+1)
+              t := substr(ft.name, lastDelimiter('\/', ft.name)+1)
+            else
+              t := s;
+            arZ.addFile(ft.resource, t);
+           finally
+            freeIfTemp(ft)
+          end;
+        end;
+      if cnt=1 then
+        theOnlySelection := s;
+    end; // addSelection
+  var
+    m: TZipStreamMode;
+    selection, itsAsearch: boolean;
+  begin
+    if not f.hasRecursive(FA_ARCHIVABLE) then
+      begin
+        Self.getPage('deny', data);
+        exit;
+      end;
+    if conn.httpRequest.firstByte > 0 then
+      begin
+        conn.reply.mode := HRM_RANGE_NOT_ALLOWED;
+        data.conn.reply.bodyMode := RBM_RAW;
+        data.conn.reply.body := '';
+        exit;
+      end;
+
+    data.downloadingWhat := DW_ARCHIVE;
+    data.countAsDownload := TRUE;
+    if limitsExceededOnDownload() then
+      exit;
+
+    // this will let you get all files as flatly arranged in the root of the archive, without folders
+    noFolders := not stringExists(data.postVars.values['nofolders'], ['','0','false']);
+    itsAsearch := data.urlvars.values['search'] > '';
+
+    if spCompressedZip in sp then
+      m := ZSM_AUTO
+     else
+      m := ZSM_PLAIN;
+    arZ := TZipStream.Create(m); // this is freed by ThttpSrv
+    try
+//      arZ.fileNamesOEM := spOemTar in sp;
+      selection := addSelection();
+      if not selection then
+        addFolder(f);
+      if selection and (theOnlySelection>'') then
+        data.lastFN := theOnlySelection + '.zip'
+       else
+        begin
+         if f.name = '' then
+           exit; // can this really happen?
+         data.lastFN := if_(f.name='/', 'home', f.name)
+           +'.'+if_(selection, 'selection', if_(itsAsearch, 'search', 'folder'))
+           +'.zip';
+        end;
+
+      if arZ.count = 0 then
+       begin
+        arZ.free;
+        data.disconnectReason := 'There is no file you are allowed to download';
+        Self.getPage('deny', data, f);
+        exit;
+       end;
+      if arZ.prepare then
+        begin
+          conn.reply.mode := HRM_REPLY;
+          conn.reply.contentType := ZIP_MIME;
+          conn.reply.bodyMode := RBM_STREAM;
+          conn.reply.bodyStream := arZ;
+          try
+            data.fileXferStart := now();
+            data.lastFN := first(eventToFilename('archive name', [
+              '%archive-name%', data.lastFN,
+              '%mode%', if_(selection, 'selection','folder'),
+              '%archive-size%', intToStr(arZ.size)
+//              '%archive-size%', '-1'
+             ]), data.lastFN);
+
+            if not (spNoContentDisposition in sp) then
+              addContentDisposition(data.lastFN);
+           finally
+            if arZ.Size < 0 then
+              begin
+  //              conn.reply.headerAdd('Transfer-Encoding: chunked');
+                conn.addHeader('Transfer-Encoding', 'chunked');
+                conn.reply.isChunckedTransfer := True;
+              end;
+          end;
+        end
+       else
+        begin
+          if arZ.zip64 then
+            data.disconnectReason := 'Files are too big'
+           else
+            data.disconnectReason := 'Error processing files';
+          FreeAndNil(arZ);
+          Self.getPage('deny', data, f);
+        end;
+     except
+      arZ.free;
+      arZ := NIL;
+    end;
+  end; // serveZip
+  {$ENDIF SERVE_ZIP}
 
   procedure checkCurrentAddress();
   begin
@@ -3842,11 +4188,13 @@ var
       result := fileMatch(allowedReferer, r);
     end; // isAllowedReferer
 
-    procedure replyWithString(s: UnicodeString);
+    procedure replyWithString(const s: UnicodeString);
     var
       a: String;
      {$IFDEF FPC}
-//      sR: RawByteString;
+      {$IFNDEF USE_MORMOT}
+      sR: RawByteString;
+      {$ENDIF USE_MORMOT}
      {$ENDIF FPC}
     begin
       if (data.disconnectReason > '') and not data.disconnectAfterReply then
@@ -3860,14 +4208,19 @@ var
       a := conn.getHeader('Accept-Charset');
       if (a <> '') and ( (ipos('utf-8', a) = 0) and (pos('*', a) = 0)) then
         begin
+ {$IFDEF USE_MORMOT}
+         conn.reply.body := TSynAnsiConvert.Create(CP_LATIN1).UnicodeStringToAnsi(s);
+ {$ELSE !USE_MORMOT}
          {$IFDEF FPC}
-//          sR := s;
-//          SetCodePage(sR, 28591);  // ISO 8859-1 Latin 1; Western European (ISO)
-//          conn.reply.body := sR
+          sR := s;
+          SetCodePage(sR, 28591);  // ISO 8859-1 Latin 1; Western European (ISO)
+          conn.reply.body := sR
          {$ELSE ~FPC}
 //          conn.reply.body := UnicodeToAnsi(s, 28591) // ISO 8859-1 Latin 1; Western European (ISO)
+          aa := s;
+          conn.reply.body := RawByteString(aa);
          {$ENDIF FPC}
-         conn.reply.body := TSynAnsiConvert.Create(CP_LATIN1).UnicodeStringToAnsi(s);
+ {$ENDIF USE_MORMOT}
         end
        else
         conn.reply.bodyU := s;
@@ -3887,11 +4240,31 @@ var
 
       if conn.reply.contentType = '' then
         conn.reply.contentType := if_(trim(getTill(RawByteString('<'), s))='', RawByteString('text/html'), RawByteString('text/plain'));
-      conn.reply.mode:=HRM_REPLY;
+      conn.reply.mode := HRM_REPLY;
       conn.reply.bodyMode := RBM_RAW;
       conn.reply.body := s;
       Self.compressReply(data);
     end; // replyWithStringB
+
+    procedure replyWithJSON(const j: TJSONObject);
+    begin
+      if (data.disconnectReason > '') and not data.disconnectAfterReply then
+       begin
+        Self.getPage('deny', data);
+        exit;
+       end;
+
+      conn.reply.contentType := 'application/json';
+      conn.reply.mode := HRM_REPLY;
+//      conn.reply.bodyMode := RBM_RAW;
+     {$IFDEF FPC}
+      conn.reply.BodyU := j.AsJSON;
+     {$ELSE !FPC}
+//      conn.reply.Body := j.ToJSON;
+      conn.reply.BodyU := j.ToString;
+     {$ENDIF FPC}
+      Self.compressReply(data);
+    end; // replyWithJSON
 
     procedure replyWithRes(const res: String; const contType: RawByteString);
     var
@@ -3921,67 +4294,147 @@ var
       Self.compressReply(data);
     end; // replyWithRes
 
+    procedure listArchiveAsJSON;
+    var
+      zipArch: TZipFile;
+      i: Integer;
+      j, je: TJSONObject;
+      ja: TJSONArray;
+      arcLoaded: Boolean;
+    const
+      zit: array[TZipItemType] of string = ('file', 'folder', 'link');
+    begin
+      if f.isArchive then
+        try
+          j := NIL;
+          arcLoaded := False;
+          zipArch := TZipFile.create;
+          try
+            try
+              zipArch.LoadFromFile(f.resource, True);
+              arcLoaded := True;
+             except
+              on e:Exception do
+                begin
+//                 data.disconnectReason := 'Error processing archive: ' + e.Message;
+                 data.conn.reply.reason := StrToUTF8('Error processing archive: ' + e.Message);
+                 data.conn.reply.mode := HRM_INTERNAL_ERROR;
+//                 data.conn.reply.bodyMode := RBM_TEXT;
+//                 data.conn.reply.BodyU := 'Error processing archive: ' + e.Message;
+                 data.conn.reply.contentType :='text/html; charset=utf-8';
+                 Exit;
+//                 Self.getPage('not found', data);
+                end;
+            end;
+            if arcLoaded then
+              begin
+                j := TJSONObject.Create;
+                ja := TJSONArray.Create;
+                if zipArch.Count > 0 then
+                begin
+                for I := 0 to zipArch.Count-1 do
+                 with zipArch.Items[i] do
+                   begin
+                     je := TJSONObject.Create;
+                      je.Add('entryIndex', i);
+                      je.Add('name', itemName);
+                      je.Add('size', itemUnCompressedSize);
+                      je.Add('compressedSize', itemCompressedSize);
+                      je.Add('lastModified', DateToISO8601(itemLastModified));
+                      je.Add('type', zit[itemType]);
+                      ja.Add(je);
+                   end;
+                end;
+               je := TJSONObject.Create;
+               je.Add('totalEntryCount', zipArch.Count);
+               je.Add('entries', ja);
+               j.Add('archive', je);
+               replyWithJSON(j);
+               j.Free;
+              end;
+           finally
+            zipArch.Free;
+          end;
+         except
+          on e:Exception do
+            begin
+              data.disconnectReason := 'Error processing archive';
+              data.conn.reply.reason := StrToUTF8('Error processing archive: ' + e.Message);
+              data.conn.reply.mode := HRM_INTERNAL_ERROR;
+              Self.getPage('not found', data);
+            end;
+        end
+       else
+        Self.getPage('not found', data);
+    end;
+
+
     procedure deletion();
     var
       asUrl, s: string;
       doneRes, done, errors: TStringDynArray;
     begin
-    if (conn.httpRequest.method <> HM_POST)
-    or (data.postVars.values['action'] <> 'delete')
-    or not accountAllowed(FA_DELETE, data, f) then exit;
+      if (conn.httpRequest.method <> HM_POST)
+       or (data.postVars.values['action'] <> 'delete')
+       or not accountAllowed(FA_DELETE, data, f) then
+        exit;
 
-    doneRes:=NIL;
-    errors:=NIL;
-    done:=NIL;
-    for asUrl in data.getFilesSelection() do
-      begin
-        s := uri2disk(asUrl, f);
-        if (s = '') or not fileOrDirExists(s) then  // ignore
-          continue;
-        runEventScript('file deleting', ['%item-deleting%', s]);
-        moveToBin(toSA([s, s+'.md5', s+COMMENT_FILE_EXT]) , TRUE);
-        if fileOrDirExists(s) then
-          begin
-          addString(asUrl, errors);
-          continue; // this was not deleted. permissions problem?
-          end;
+      doneRes:=NIL;
+      errors:=NIL;
+      done:=NIL;
+      for asUrl in data.getFilesSelection() do
+        begin
+          s := uri2disk(asUrl, f);
+          if (s = '') or not fileOrDirExists(s) then  // ignore
+            continue;
+          runEventScript('file deleting', ['%item-deleting%', s]);
+          moveToBin(toSA([s, s+'.md5', s+COMMENT_FILE_EXT]) , TRUE);
+          if fileOrDirExists(s) then
+            begin
+            addString(asUrl, errors);
+            continue; // this was not deleted. permissions problem?
+            end;
 
-        addString(s, doneRes);
-        addString(asUrl, done);
-        runEventScript('file deleted', ['%item-deleted%', s]);
-      end;
+          addString(s, doneRes);
+          addString(asUrl, done);
+          runEventScript('file deleted', ['%item-deleted%', s]);
+        end;
 
-    removeFilesFromComments(doneRes, lp);
+      removeFilesFromComments(doneRes, lp);
 
-    if (LogDeletions in logP) and assigned(done) then
-      add2log('Deleted files in '+url+CRLF+join(CRLF, done), data);
-    if (LogDeletions in logP) and assigned(errors) then
-      add2log('Failed deletion in '+url+CRLF+join(CRLF, errors), data);
+      if (LogDeletions in logP) and assigned(done) then
+        add2log('Deleted files in '+url+CRLF+join(CRLF, done), data);
+      if (LogDeletions in logP) and assigned(errors) then
+        add2log('Failed deletion in '+url+CRLF+join(CRLF, errors), data);
     end; // deletion
 
     function getAccountRedirect(acc:Paccount=NIL):string;
     begin
-    result:='';
-    if acc = NIL then
-      acc:=data.account;
-    acc:=accountRecursion(acc, ARSC_REDIR);
-    if acc = NIL then exit;
-    result:=acc.redir;
-    if (result = '') or ansiContainsStr(result, '://') then exit;
-    // if it's not a complete url, it may require some fixing
-    if not ansiStartsStr('/', result) then result:='/'+result;
-    result:=xtpl(result,['\','/']);
+      result:='';
+      if acc = NIL then
+        acc:=data.account;
+      acc := accountRecursion(acc, ARSC_REDIR);
+      if acc = NIL then
+        exit;
+      result := acc.redir;
+      if (result = '') or ansiContainsStr(result, '://') then
+        exit;
+      // if it's not a complete url, it may require some fixing
+      if not ansiStartsStr('/', result) then
+        result := '/'+result;
+      result := xtpl(result,['\','/']);
     end; // getAccountRedirect
 
-    function addNewAddress():boolean;
+    function addNewAddress(): Boolean;
     begin
-    result:=ipsEverConnected.indexOf(data.address) < 0;
-    if not result then exit;
-    ipsEverConnected.add(data.address);
+      result := ipsEverConnected.indexOf(data.address) < 0;
+      if not result then
+        exit;
+      ipsEverConnected.add(data.address);
     end; // addNewAddress
 
     // parameters: u(username), e(?expiration_UTC), s2(sha256(rest+pwd))
-    function urlAuth():string;
+    function urlAuth(): String;
     var
       s, sign: string;
       ss: Tsession;
@@ -4024,7 +4477,7 @@ var
     var
 //      b: rawbytestring;
 //      s, e: integer;
-      ct: String;
+      ct: TContentTypeType;
       str: TStream;
       szs: String;
       sz: Integer;
@@ -4036,7 +4489,7 @@ var
       str := nil;
       szs := data.urlVars.values['size'];
       sz := StrToIntDef(szs, -1);
-      AcceptWebP := ipos('image/webp', data.conn.getHeader('Accept')) >= 0;
+      AcceptWebP := ipos(webpMime, data.conn.getHeader('Accept')) >= 0;
       if f.getThumb(str, ct, sz, AcceptWebP) then
         begin
           conn.reply.contentType := ct;
@@ -4077,6 +4530,82 @@ var
         end;
     end;
 
+    function sendZipEntry(): Boolean;
+    var
+      i: Integer;
+      fileId: String;
+      ze: TZipFileAsStream;
+      b: Boolean;
+      s: String;
+      EntityFileName: String;
+    begin
+      if (mode <> 'extract') or not f.isArchive then
+        exit(FALSE);
+      result := TRUE;
+      i := -1;
+      data.countAsDownload := f.shouldCountAsDownload();
+      if data.countAsDownload and limitsExceededOnDownload() then
+        exit;
+
+      fileId := data.urlVars.values['file'];
+      if TryStrToInt(fileId, i) then
+        begin
+          ze := TZipFileAsStream.Create(f.resource, i);
+          if ze.Init then
+            begin
+//              conn.reply.contentType := ;
+              conn.reply.mode := HRM_REPLY;
+              conn.reply.bodyMode := RBM_STREAM;
+              conn.reply.bodyStream := ze;
+              data.dontLog := True;
+              EntityFileName := StringReplace(ze.fileName, ZIP_PATH_DELIMITER, PathDelim, [rfReplaceAll]);
+              EntityFileName := ExtractFileName(EntityFileName);
+              if EntityFileName = '' then
+                EntityFileName := ze.fileName;
+
+              doSetupDownloadIcon(data);
+              data.eta.idx := 0;
+              conn.reply.contentType := name2mimetype(EntityFileName, DEFAULT_MIME);
+              data.downloadingWhat := DW_FILE;
+              { I guess this would not help in any way for files since we are already handling the 'if-modified-since' field
+              try
+                conn.addHeader('ETag: '+getEtag(f.resource));
+              except end;
+              }
+
+              data.fileXferStart := now();
+              if data.countAsDownload and (flashOn = 'download') then
+                doFlash('download');
+
+              b := (openInBrowser <> '') and fileMatch(openInBrowser, EntityFileName)
+                or inBrowserIfMIME and (conn.reply.contentType <> DEFAULT_MIME);
+
+              s := first(eventToFilename('download name', []), EntityFileName); // a script can eventually decide the name
+              // N-th workaround for IE. The 'accept' check should let us know if the save-dialog is displayed. More information at www.rejetto.com/forum/?topic=6275
+              if (data.agent = 'MSIE') and (conn.getHeader('Accept') = '*/*') then
+                s := xtpl(s, [' ','%20']);
+              if not (spNoContentdisposition in sp) or not b then
+                addContentDisposition(s, not b);
+            end
+           else
+            begin
+              data.disconnectReason := 'Error processing archive: ' + ze.errorMsg;
+              data.conn.reply.reason := StrToUTF8('Error processing archive: ' + ze.errorMsg);
+              ze.Free;
+
+              data.conn.reply.mode := HRM_INTERNAL_ERROR;
+              Self.getPage('not found', data);
+            end;
+
+        end
+       else
+        begin
+          data.conn.reply.mode := HRM_NOT_FOUND;
+          exit;
+        end;
+    end;
+
+
   var
     b: boolean;
     s: string;
@@ -4110,7 +4639,7 @@ var
 
     data.lastFile := NIL; // auto-freeing
 
-    with objByIp(data.address) do
+    with objByIp(htSrv, data.address) do
       begin
         if speedLimitIP < 0 then
           limiter.maxSpeed:=MAXINT
@@ -4120,7 +4649,6 @@ var
           conn.limiters.add(limiter);
       end;
 
-    conn.addHeader(RawByteString('Accept-Ranges'), RawByteString('bytes'));
     if spSendHFSIdentifier in sp then
       conn.addHeader('Server', 'HFS '+ srvConst.VERSION);
 
@@ -4326,7 +4854,7 @@ var
       if not f.isRealFolder() then
         Self.getPage('deny', data)
       else if accountAllowed(FA_UPLOAD, data, f) then
-        Self.getPage( if_(b, RawByteString('upload+progress'),'upload'), data, f)
+        Self.getPage( if_(b, RawByteString('upload+progress'),RawByteString('upload')), data, f)
       else
         begin
         Self.getPage('unauth', data);
@@ -4348,20 +4876,20 @@ var
 
     // provide access to any [section] in the tpl, included [progress]
     if mode = 'section' then
-      s:=first(data.urlvars.values['id'], 'no-id') // no way, you must specify the id
+      s := first(data.urlvars.values['id'], 'no-id') // no way, you must specify the id
     else if (f = Self.rootFile) and (urlCmd > '') then
-      s:=substr(urlCmd,2)
+      s := substr(urlCmd,2)
     else
       s:='';
     if (s > '') and f.isFolder() and not ansiStartsText('special:', s) then
       with Self.tplFromFile(f) do // temporarily builds from diff tpls
         try
-          section:=getsection(s);
+          section := getsection(s);
           if assigned(section) and section.public then // it has to exist and be accessible
             begin
             if not section.cache
             or not notModified(conn, s+floatToStr(section.ts), '') then
-              Self.getPage(s, data, f, me());
+              Self.getPage(TSectionName(s), data, f, me());
             exit;
             end;
         finally free
@@ -4380,13 +4908,29 @@ var
       Self.getPage('deny', data);
       exit;
       end;
-
+   {$IFDEF SERVE_ZIP}
+    if (urlCmd = '~folder.zip')
+     or (mode = 'archive') then
+      begin
+      serveZip();
+      exit;
+      end;
+   {$ENDIF SERVE_ZIP}
+   {$IFDEF SERVE_TAR}
     if (urlCmd = '~folder.tar')
-    or (mode = 'archive') then
+     or (mode = 'archive') then
       begin
       serveTar();
       exit;
       end;
+   {$ENDIF SERVE_TAR}
+
+    if (mode = 'list')and f.isFile
+      and f.isArchive then
+     begin
+      listArchiveAsJSON();
+      exit;
+     end;
 
     // please note: we accept also ~files.lst.m3u
     if ansiStartsStr('~files.lst', urlCmd)
@@ -4430,12 +4974,12 @@ var
       if sessionRedirect() then
         exit;
       data.downloadingWhat := DW_FOLDERPAGE;
-  //QueryPerformanceFrequency(Freq);
-  //QueryPerformanceCounter(StartCount);
-  // start-profiler
+//  QueryPerformanceFrequency(Freq);
+//  QueryPerformanceCounter(StartCount);
       if (spDMbrowserTpl in sp) and isDownloadManagerBrowser() then
         s := getAFolderPage(f, data, dmBrowserTpl)
-      else if (spDisableMacros in sp) and (not Assigned(Self.tpl) or (Self.tpl.fullText = '') or Self.tpl.anyMacroMarkerIn)and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
+//      else if (spDisableMacros in sp) and (not Assigned(Self.tpl) or (Self.tpl.fullText = '') or Self.tpl.anyMacroMarkerIn)and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
+      else if not(spEnableMacros in sp) and (not Assigned(Self.tpl) or (Self.tpl.fullText = '') or Self.tpl.anyMacroMarkerIn)and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
         s := getAFolderPage(f, data, noMacrosTpl)
       else if (spNonLocalIPDisableMacros in sp) and not data.isLocalAddress and Assigned(noMacrosTpl) and (noMacrosTpl.fullText>'') then
         s := getAFolderPage(f, data, noMacrosTpl)
@@ -4443,10 +4987,9 @@ var
         s := getAFolderPage(f, data, Self.tpl);
       if conn.reply.mode <> HRM_REDIRECT then
         replyWithString(s);
-  // stop-profiler
-  //QueryPerformanceCounter(StopCount);
-  TimingSeconds := (StopCount - StartCount) / Freq;
-  OutputDebugString(PChar('Prepared reply for folder by ' + floattostr(TimingSeconds)));
+//  QueryPerformanceCounter(StopCount);
+//  TimingSeconds := (StopCount - StartCount) / Freq;
+//  OutputDebugString(PChar('Prepared reply for folder by ' + floattostr(TimingSeconds)));
       exit;
       end;
 
@@ -4459,6 +5002,14 @@ var
         sendIcon;
         Exit;
       end;
+
+    if mode = 'extract' then
+      begin
+        sendZipEntry;
+        Exit;
+      end;
+
+    conn.addHeader(RawByteString('Accept-Ranges'), RawByteString('bytes'));
 
     data.countAsDownload := f.shouldCountAsDownload();
     if data.countAsDownload and limitsExceededOnDownload() then
@@ -4583,7 +5134,7 @@ begin
   if assigned(data) then
     data.lastActivityTime := now();
 
-  if (dumpTraffic in logP) and (event in [HE_GOT, HE_SENT]) then
+  if (dumpTraffic in logP) and (event in [HE_GOT, HE_SENT]) and Assigned(data) then
     appendFileA(exePath+'hfs-dump.bin', TLV(if_(event=HE_GOT,1,2),
       TLV(10, str_(now()))+TLVS(11, data.address)+TLVS(12, conn.port)+TLV(13, conn.eventData)
     ));
@@ -4792,27 +5343,27 @@ var
   act: TfileAction;
   u, n: string;
 begin
-result:=[];
-usernames:=THashedStringList(par);
-renamings:=THashedStringList(par2);
-for act:=low(act) to high(act) do
-  for i:=length(f.accounts[act])-1 downto 0 do
-    begin
-    u:=f.accounts[act][i];
-    n:=renamings.values[u];
-    if n > '' then
-      begin
-      f.accounts[act][i]:=n;
-      VFSmodified:=TRUE;
-      continue;
-      end;
-    if (u = '')
-    or not (u[1] in ['@','*']) and (usernames.indexOf(u) < 0) then
-      begin
-      removeString(f.accounts[act], i);
-      VFSmodified:=TRUE;
-      end;
-    end;
+  result := [];
+  usernames := THashedStringList(par);
+  renamings := THashedStringList(par2);
+  for act:=low(act) to high(act) do
+    for i:=length(f.accounts[act])-1 downto 0 do
+     begin
+      u := f.accounts[act][i];
+      n := renamings.values[u];
+      if n > '' then
+       begin
+        f.accounts[act][i]:=n;
+        VFSmodified:=TRUE;
+        continue;
+       end;
+      if (u = '')
+      or not (u[1] in ['@','*']) and (usernames.indexOf(u) < 0) then
+        begin
+          removeString(f.accounts[act], i);
+          VFSmodified := TRUE;
+        end;
+     end;
 end; // cbPurgeVFSaccounts
 
 procedure TFileServer.purgeVFSaccounts();
@@ -4825,12 +5376,12 @@ begin
   renamings := THashedStringList.create;
   try
     for i:=0 to length(accounts)-1 do
-      begin
-      a:=@accounts[i];
+     begin
+      a := @accounts[i];
       usernames.add(a.user);
       if (a.wasUser > '') and (a.user <> a.wasUser) then
         renamings.Values[a.wasUser]:=a.user;
-      end;
+     end;
     rootFile.recursiveApply(cbPurgeVFSaccounts, NativeInt(usernames), NativeInt(renamings));
    finally
     usernames.free;
@@ -4883,10 +5434,28 @@ begin
   end;
 end;
 
+procedure TFileServer.kickByMask(const ipmask, portmask: String);
+var
+  i: integer;
+  d: TConnData;
+begin
+  i := 0;
+  while i < getConnectionsCount do
+  begin
+    d := conn2data(i);
+    if d <> NIL then
+     with d do
+      if addressmatch(ipmask, conn.address)
+        and ((portmask = '') or filematch(portmask, conn.port)) then
+          conn.disconnect();
+    inc(i);
+  end;
+end;
+
 function TFileServer.getListenPorts(const onlyPref: Boolean = false): String;
 begin
-  if httpServIsActive then
-    Result :=  srv.port
+  if httpServIsActive and not onlyPref then
+    Result := htSrv.port
    else
     Result := port;
 end;
@@ -4898,6 +5467,41 @@ begin
   uploadsLogged := 0;
   outTotalOfs := -htSrv.bytesSent;
   inTotalOfs := -htSrv.bytesReceived;
+end;
+
+procedure TFileServer.addLimiter(limiter: TspeedLimiter);
+begin
+  htSrv.limiters.add(limiter);
+end;
+
+procedure TFileServer.removeLimiter(limiter: TspeedLimiter);
+begin
+  htSrv.limiters.remove(limiter);
+end;
+
+procedure TFileServer.runTplImport;
+var
+  f, fld: Tfile;
+begin
+  f := Tfile.create(Self, tplFilename);
+  fld := Tfile.create(Self, extractFilePath(tplFilename));
+  try
+    runScript(Self, Self.tpl['special:import'], NIL, Self.tpl, f, fld);
+   finally
+    freeAndNIL(f);
+    freeAndNIL(fld);
+  end;
+end; // runTplImport
+
+function TFileServer.runEventScript(const event:string; table: TUnicodeStringDynArray=NIL; cd:TconnDataMain=NIL):string;
+begin
+  addArray(table, ['%event%', event]);
+  result := runScript(Self, eventScripts[event], table, eventScripts, NIL, NIL, cd);
+end; // runEventScript
+
+function TFileServer.getTPLSection(const section: String): UnicodeString;
+begin
+  Result := tpl[section];
 end;
 
 constructor TconnData.create(conn: ThttpConn; pGuiData: TObject);
@@ -4914,6 +5518,9 @@ begin
   postVars := THashedStringList.create();
   guiData := pGuiData;
   ConnBoxAdded := False;
+  Self.address := conn.address;
+//  Self.addressIP := conn.SessIpInfo.SocRemoteAddr;
+  Self.isLocalAddress := isLocalIP(conn.address) and not addressmatch(forwardedMask, conn.address); // More strictly, because we need to check if it's a reverse proxy!
 end; // constructor
 
 destructor TconnData.destroy;
@@ -4962,6 +5569,15 @@ begin
   FlastFile := f;
 end;
 
+procedure TconnData.logout();
+begin
+  sessions.destroySession(sessionID);
+  usr:='';
+  pwd:='';
+  account := NIL;
+  conn.delCookie(SESSION_COOKIE);
+end; // logout
+
 function TconnData.accessFor(f: TFile): Boolean;
 begin
   Result := Self <> NIL;
@@ -4992,87 +5608,94 @@ end;
 function getAcceptOptions(): Types.TstringDynArray;
 begin
  {$IFDEF USE_IPv6}
-  result := listToArray(localIPlist(sfAny));
+  if useIPv6 then
+    result := getLocalIPs(sfAny)
+   else
+    result := getLocalIPs(sfIPv4);
+//  result := listToArray(localIPlist(sfAny));
   addUniqueString('127.0.0.1', result);
-  addUniqueString('::1', result);
+  if useIPv6 then
+    addUniqueString('::1', result);
  {$ELSE ~USE_IPv6}
   result := listToArray(localIPlist);
   addUniqueString('127.0.0.1', result);
  {$ENDIF USE_IPv6}
 end; // getAcceptOptions
 
-function startServer(): boolean;
+function startServer(s: ThttpSrv): boolean;
 
-  procedure tryPorts(list:array of string);
+  procedure tryPorts(list: array of string);
   var
     i: Integer;
   begin
   for i :=0 to length(list)-1 do
     begin
-    srv.port:=trim(list[i]);
-    if srv.start(listenOn) then exit;
+    s.port := trim(list[i]);
+    if s.start(listenOn) then exit;
     end;
   end; // tryPorts
 
 begin
-result:=FALSE;
-if srv.active then exit; // fail if already active
+  result:=FALSE;
+  if s.active then
+    exit; // fail if already active
 
-if not stringExists(listenOn, getAcceptOptions()) then
-  listenOn:='';
+  if not stringExists(listenOn, getAcceptOptions()) then
+    listenOn:='';
 
-if port > '' then
-  tryPorts([port])
-else
-  tryPorts(['80','8080','280','10080','0']);
-if not srv.active then exit; // failed
-upTime:=now();
-result:=TRUE;
+  if port > '' then
+    tryPorts([port])
+   else
+    tryPorts(['80','8080','280','10080','0']);
+  if not s.active then
+    exit; // failed
+  upTime:=now();
+  result:=TRUE;
 end; // startServer
 
-procedure stopServer();
+procedure stopServer(s: ThttpSrv);
 begin
-  if assigned(srv) then
-    srv.stop()
+  if assigned(s) then
+    s.stop()
 end;
 
-function restartServer(): boolean;
+function restartServer(htSrv: ThttpSrv): boolean;
 var
   port: string;
 begin
   result:=FALSE;
-  if not srv.active then
+  if not htSrv.active then
     exit;
-  port := srv.port;
-  srv.stop();
-  srv.port := port;
-  result := srv.start(listenOn);
+  port := htSrv.port;
+  htSrv.stop();
+  htSrv.port := port;
+  result := htSrv.start(listenOn);
 end; // restartServer
 
 
 // change port and test it working. Restore if not working.
-function changePort(const newVal: String): Boolean;
+function changePort(htSrv: ThttpSrv; const newVal: String): Boolean;
 var
   act: boolean;
   was: string;
 begin
   result := TRUE;
-  act := srv.active;
+  act := htSrv.active;
   was := port;
   port := newVal;
-  if act and (newVal = srv.port) then
+  if act and (newVal = htSrv.port) then
     exit;
-  stopServer();
-  if startServer() then
+  stopServer(htSrv);
+  if startServer(htSrv) then
     begin
       if not act then
-        stopServer(); // restore
+        stopServer(htSrv); // restore
       exit;
     end;
   result := FALSE;
   port := was;
   if act then
-    startServer();
+    startServer(htSrv);
 end; // changePort
 
 function noLimitsFor(account: Paccount): boolean;
@@ -5205,12 +5828,78 @@ end; // protoColon
 
 function getLibs: String;
 begin
+ {$IFDEF USE_MORMOT}
   Result := SYNOPSE_FRAMEWORK_NAME + ': ' + SYNOPSE_FRAMEWORK_FULLVERSION;
+ {$ENDIF USE_MORMOT}
   Result := Result + CrLf + OverbyteIcsWSocket.CopyRight;
 //  Result := Result + CrLf + 'SSL: ' + GSSLEAY_DLL_FileVersion;
-  Result := Result + CrLf + RD.zip.ZLibVersion;
-  Result := Result + CrLf + RD.zip.ZStdVersion;
+  Result := Result + CrLf + RD.Zip.ZLibVersion;
+  Result := Result + CrLf + RD.Zip.ZStdVersion;
   Result := Result + CrLf + 'WebP Encoder: ' + WebPLibVersion;
 end;
+
+initialization
+  eventScripts := Ttpl.create();
+  ip2obj := THashedStringList.create();
+  etags := THashedStringList.create();
+  etags.values['exe'] := MD5PassHS(dateToHTTPr(getMtimeUTC(paramStr(0))));
+
+  dmBrowserTpl := Ttpl.createResource('dmBrowserTpl');
+  filelistTpl  := Ttpl.createResource('filelistTpl');
+
+  exePath:=extractFilePath(ExpandFileName(paramStr(0)));
+  cfgPath:=exePath;
+  // we give priority to exePath because some people often clear the temp folder
+  tmpPath:=exePath;
+  if savefileA(tmpPath+'test.tmp','') then
+    deleteFile(tmpPath+'test.tmp')
+   else
+    tmpPath:=getTempDir();
+  setCurrentDir(exePath); // sometimes people mess with the working directory, so we force it to the exe path
+  runningOnRemovable := (exePath > '') and (DRIVE_REMOVABLE = GetDriveType(PChar(exePath[1]+':\')));
+  useIPv6 := {$IFDEF USE_IPv6}True {$ELSE} False {$ENDIF};
+
+//tpl_help := UnUTF(getRes('tplHlp'));
+defSorting := 'name';
+flashOn := 'download';
+forwardedMask:='::1;127.0.0.1';
+toAddFingerPrint := TStringList.Create;
+
+toDelete := Tlist.create();
+usersInVFS := TusersInVFS.create();
+
+openInBrowser := '*.htm;*.html;*.jpg;*.jpeg;*.gif;*.png;*.txt;*.swf;*.svg;*.webp';
+
+autoUpdatedFiles := TstringToIntHash.create();
+
+logfile.apacheZoneString := if_(GMToffset < 0, '-','+')
+  +format('%.2d%.2d', [abs(GMToffset div 60), abs(GMToffset mod 60)]);
+
+  staticVars := THashedStringList.create;
+  currentCFGhashed := THashedStringList.create();
+  with staticVars do
+    objects[add('ini='+currentCFG)] := currentCFGhashed;
+
+finalization
+  freeAndNIL(eventScripts);
+  ip2obj.free;
+  ip2obj := NIL;
+  etags.free;
+  etags := NIL;
+
+  filelistTpl.free;
+  filelistTpl := NIL;
+  dmBrowserTpl.Free;
+  dmBrowserTpl := NIL;
+
+  toDelete.free;
+  autoupdatedFiles.free;
+  usersInVFS.free;
+
+  if Assigned(toAddFingerPrint) then
+    FreeAndNil(toAddFingerPrint);
+
+  freeAndNIL(currentCFGhashed);
+  staticVars.free;
 
 end.

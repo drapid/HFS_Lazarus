@@ -11,15 +11,10 @@ uses
   IntfGraphics,
  {$ELSE}
   System.SysUtils, System.Classes, System.ImageList,
- {$IFDEF FMX}
-  FMX.Graphics, System.UITypes, System.Types,
-  FMX.ImgList, FMX.Types
- {$ELSE ~FMX}
   Graphics, Vcl.ImgList,
   Vcl.BaseImageCollection, Vcl.ImageCollection,
   Vcl.Imaging.pngImage,
   Vcl.VirtualImageList,
- {$ENDIF FMX}
  {$ENDIF FPC}
   Controls, CommCtrl
   ;
@@ -40,11 +35,7 @@ type
   procedure setTrayIcon(var ti: TIcon; isSrvActive: Boolean; perc: real=0; size: Integer = iconsBaseSize; str: String = ''); OverLoad;
 
 var
-  {$IFDEF FMX}
-  tray_ico: TBitmap;           // the actual icon shown in tray
-  {$ELSE ~FMX}
   tray_ico: Ticon;             // the actual icon shown in tray
-  {$ENDIF FMX}
   main_ico_params: TIconParams;
 
 implementation
@@ -58,13 +49,8 @@ uses
  {$ELSE ~FPC}
    WinApi.ShellAPI,
  {$ENDIF ~FPC}
-//   utilLib,
   RDUtils,
- {$IFDEF FMX}
-   iconsFMXLib,
- {$ELSE ~FMX}
    iconsLib,
- {$ENDIF FMX}
    srvVars, srvUtils;
 
 {$IFNDEF FPC}
@@ -77,27 +63,16 @@ var
   x: integer;
   h, h2: Integer;
 begin
- {$IFDEF FMX}
-  Result := IconsDM.Images.Bitmap(tsizef.Create(size, size), if_(isSrvActive, 24, 30));
- {$ELSE ~FMX}
   Result := IconsDM.GetBitmap( if_(isSrvActive, 24, 30), size);
- {$ENDIF ~FMX}
   if perc > 0 then
     begin
       h := Result.Height;
       x := round((h-2)*perc);
-      h2 := h div 2 + 1;
- {$IFDEF FMX}
-      result.canvas.fill.Color := TColorRec.Yellow;
-      result.Canvas.FillRect(TRectF.Create(1, h2, x+1, h-1), 1);
-      result.canvas.fill.Color := TColorRec.Green;
-      result.Canvas.FillRect(TRectF.Create(x+1,h2,h-1, h-1), 1);
- {$ELSE ~FMX}
+      h2 := h div 2 - 1;
       result.canvas.Brush.color := clYellow;
       result.Canvas.FillRect(rect(1, h2, x+1, h-1));
       result.canvas.Brush.color := clGreen;
       result.Canvas.FillRect(rect(x+1,h2,h-1, h-1));
- {$ENDIF ~FMX}
     end;
 end; // getBaseTrayIcon
 
@@ -112,11 +87,9 @@ procedure drawTrayIconNumber(cnv: TCanvas; const s: String; size: Integer = icon
 var
   w, h, idx: integer;
   dx, dy, dw, dh: Integer;
- {$IFNDEF FMX}
   blend: BLENDFUNCTION;
   MaskDC: HDC;
   Save: THandle;
- {$ENDIF ~FMX}
 begin
   if length(s) > 0 then
    begin
@@ -134,10 +107,6 @@ begin
         idx:=10
        else
         idx:=ord(s[i])-ord('0');
- {$IFDEF FMX}
-      cnv.DrawBitmap(numbers, TRectF.Create(TPointF.Create(idx*w, 0), w, h),
-             TRectF.Create(TPointF.Create(dx, dy), dw, dh), 1);
- {$ELSE ~FMX}
       if numbers.Transparent then
       begin
         Save := 0;
@@ -170,7 +139,6 @@ begin
         end
        else
       TransparentBlt(cnv.Handle, dx, dy, dw, dh, numbers.Canvas.Handle, idx*w, 0, w, h, $FF00FF);
- {$ENDIF ~FMX}
       dec(dx, dw);
      end;
    end;

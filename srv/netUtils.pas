@@ -31,6 +31,7 @@ type
   function checkHTTPSCanWork(var missing: TStringDynArray): Boolean; OverLoad;
   function checkHTTPSCanWork(): Boolean; OverLoad;
   function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
+//  function getExternalAddress(var res: String; provider: PString=NIL; fs: TFileServer = NIL; doLog: Boolean = false): Boolean;
 // an ip address where we are listening
   function getIP(): String;
 
@@ -44,11 +45,11 @@ const
 type
   TBoolFunc = function(): Boolean;
 
- {$IFDEF USE_IPv6}
+ {$IFDEF USE_SSL}
   ThttpClient = class(TSslHttpCli)
- {$ELSE not USE_IPv6}
+ {$ELSE not USE_SSL}
   ThttpClient = class(THttpCli)
- {$ENDIF USE_IPv6}
+ {$ENDIF USE_SSL}
    private
     fCanHTTPS: TBoolFunc;
     fAgent: String;
@@ -67,10 +68,24 @@ implementation
 uses
   sysutils, StrUtils,
   RDUtils, RDFileUtil, RnQCrypt,
+ {$IFDEF SUPPORT_ECC_SIGN}
+  RnQJSON,
+  {$IFDEF FPC}
+  fpJSON,
+  {$ELSE !FPC}
+  JSON,
+  {$ENDIF FPC}
+ {$ENDIF SUPPORT_ECC_SIGN}
+  {$IFNDEF FMX}
   OverbyteIcsWSocket,
+  {$ENDIF !FMX}
  {$IFNDEF FPC}
  {$IFDEF USE_SSL}
-  {$IFDEF FMX}Ics.fmx.{$ENDIF FMX}OverbyteIcsSslBase,
+  {$IFDEF FMX}
+  Ics.fmx.OverbyteIcsSslBase,
+  {$ELSE !FMX}
+  OverbyteIcsSslBase,
+  {$ENDIF FMX}
   OverbyteIcsSSLEAY,
  {$ENDIF USE_SSL}
  {$ENDIF ~FPC}
@@ -122,6 +137,7 @@ begin
   if Assigned(httpCli) then
     with httpCli do
       try
+        followRelocation := True;
         fs := TMemoryStream.Create;
         rcvdStream := fs;
         if (from <> 0) or (size > 0) then
@@ -277,15 +293,19 @@ end; // httpGetRaw
 
 
 function httpGetFileWithCheck(const url, filename: string; var errMsg: String; notify: TProgressFunc=NIL): Boolean;
+{$IFDEF SUPPORT_ECC_SIGN}
 const
   sigFileExt = '.sig';
-//  tmpSubFolder = 'tmp.download';
+{$ENDIF SUPPORT_ECC_SIGN}
 var
 //  tmpFolder: String;
   tmpFile: String;
   resultFile: String;
+ {$IFDEF SUPPORT_ECC_SIGN}
   pubKey: RawByteString;
-  sign64: RawByteString;
+  sign64, sign64j: RawByteString;
+  j: TJSONObject;
+ {$ENDIF SUPPORT_ECC_SIGN}
 begin
 //  tmpFolder := ExtractFileDir(filename) + tmpSubFolder + PathDelim;
   resultFile := ExtractFileName(filename);
@@ -297,22 +317,43 @@ begin
   Result := httpGetFile(url, tmpFile, errMsg, notify);
   if Result then
     begin
+ {$IFDEF SUPPORT_ECC_SIGN}
       Result := httpGetRaw(url + sigFileExt, 5555, sign64, errMsg);
+      if not Result then
+        begin
+          Result := httpGetRaw(url + sigFileExt, 5555, sign64j, errMsg);
+          if Result then
+            begin
+              Result := ParseJSON(UTF8String(sign64j), j);
+              if Result then
+               {$IFDEF FPC}
+                sign64 := j.Get('sign', '');
+              {$ELSE !FPC}
+                sign64 := j.GetValue<RawByteString>('sign');
+              {$ENDIF FPC}
+              Result := sign64 > '';
+            end;
+        end;
+ {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if Result then
     begin
+   {$IFDEF SUPPORT_ECC_SIGN}
      pubKey := getRes('RDpubkey');
      Result := verifyEccSignFile(tmpFile, sign64, pubKey);
      if not Result then
        errMsg := unsignesErr;
+   {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if not result then
     begin
       if FileExists(tmpFile, false) then
         begin
           deleteFile(tmpFile);
+ {$IFDEF SUPPORT_ECC_SIGN}
           if FileExists(tmpFile + sigFileExt, false) then
             deleteFile(tmpFile + sigFileExt);
+ {$ENDIF SUPPORT_ECC_SIGN}
         end;
     end
    else
@@ -322,15 +363,17 @@ begin
 end; // httpGetFileWithCheck
 
 function httpGetFileWithCheck1(const url, filename: string; var errMsg: String; notify: TdocDataEvent=NIL): Boolean;
+{$IFDEF SUPPORT_ECC_SIGN}
 const
   sigFileExt = '.sig';
-//  tmpSubFolder = 'tmp.download';
+{$ENDIF SUPPORT_ECC_SIGN}
 var
-//  tmpFolder: String;
   tmpFile: String;
   resultFile: String;
+ {$IFDEF SUPPORT_ECC_SIGN}
   pubKey: RawByteString;
   sign64: RawByteString;
+ {$ENDIF SUPPORT_ECC_SIGN}
 begin
 //  tmpFolder := ExtractFileDir(filename) + tmpSubFolder + PathDelim;
   resultFile := ExtractFileName(filename);
@@ -340,24 +383,30 @@ begin
 //    CreateDirRecursive(tmpFolder);
 
   Result := httpGetFile1(url, tmpFile, errMsg, notify);
+ {$IFDEF SUPPORT_ECC_SIGN}
   if Result then
     begin
       Result := httpGetRaw(url + sigFileExt, 5555, sign64, errMsg);
     end;
+ {$ENDIF SUPPORT_ECC_SIGN}
   if Result then
     begin
+   {$IFDEF SUPPORT_ECC_SIGN}
      pubKey := getRes('RDpubkey');
      Result := verifyEccSignFile(tmpFile, sign64, pubKey);
      if not Result then
        errMsg := unsignesErr;
+   {$ENDIF SUPPORT_ECC_SIGN}
     end;
   if not result then
     begin
       if FileExists(tmpFile, false) then
         begin
           deleteFile(tmpFile);
+ {$IFDEF SUPPORT_ECC_SIGN}
           if FileExists(tmpFile + sigFileExt, false) then
             deleteFile(tmpFile + sigFileExt);
+ {$ENDIF SUPPORT_ECC_SIGN}
         end;
     end
    else
@@ -376,13 +425,16 @@ begin
   try
    {$IFDEF USE_IPv6}
     result := listToArray(localIPlist(sfIPv4));
-    a6 := listToArray(localIPlist(sfIPv6));
-    if Length(a6) > 0 then
-      begin
-        for I := Low(a6) to High(a6) do
-          a6[i] := '[' + a6[i] + ']';
-        Result := Result + a6;
-      end;
+    if useIPv6 then
+    begin
+      a6 := listToArray(localIPlist(sfIPv6));
+      if Length(a6) > 0 then
+        begin
+          for I := Low(a6) to High(a6) do
+            a6[i] := '[' + a6[i] + ']';
+          Result := Result + a6;
+        end;
+    end;
   {$ELSE USE_IPv6}
     result := listToArray(localIPlist);
   {$ENDIF USE_IPv6}
@@ -401,7 +453,12 @@ var
   i: integer;
   ips: Tstrings;
 begin
-  ips := LocalIPlist();
+  {$IFDEF USE_IPv6}
+  if useIPv6 then
+    ips := LocalIPlist(sfAny)
+   else
+  {$ENDIF USE_IPv6}
+    ips := LocalIPlist();
   case ips.count of
     0: result := '';
     1: result := ips[0];
@@ -523,6 +580,7 @@ end; // onHttpGetUpdate
 
 //function getExternalAddress(var res: String; provider: PString=NIL; doLog: Boolean = false): Boolean;
 function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
+//function getExternalAddress(var res: String; provider: PString=NIL; fs: TFileServer = NIL; doLog: Boolean = false): Boolean;
 
   procedure loadIPservices(src: String='');
   var
@@ -598,7 +656,9 @@ begin
   if not result then
     exit;
   if (res <> s) and Assigned(doLogFunc) then //mainFrm.logOtherEventsChk.checked then
+  //if doLog and (fs <> NIL) and (res <> s) then // and Assigned(doLogFunc) then //mainFrm.logOtherEventsChk.checked then
     doLogFunc('New external address: '+s+' via '+hostFromURL(addr));
+    //fs.add2Log('New external address: '+s+' via '+hostFromURL(addr));
   res := s;
 end; // getExternalAddress
 

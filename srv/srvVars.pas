@@ -3,7 +3,6 @@ unit srvVars;
 
 interface
 uses
-//  Graphics, Classes, Controls, Types, iniFiles, hsLib, srvClassesLib, srvConst;
   Classes, Types, iniFiles, regexpr,
   hsLib, srvClassesLib, srvConst;
 
@@ -39,7 +38,6 @@ var
   hitsLogged, downloadsLogged, uploadsLogged: integer;
   dontLogAddressMask: string;
   renamePartialUploads: string;
-  ipsEverConnected: THashedStringList;
   toDelete: Tlist;             // connections pending for deletion
   customIPservice: string;
   mimeTypes, address2name, IPservices: TUnicodeStringDynArray;
@@ -65,9 +63,8 @@ var
   maxIPs: integer;             // max number of different addresses connected
   maxIPsDLing: integer;        // max number of different addresses downloading
 
-  tplFilename: UnicodeString; // when empty, we are using the default tpl
+  tplFilename, tplNoMacrosFN: UnicodeString; // when empty, we are using the default tpl
   dmBrowserTpl, filelistTpl: Ttpl;
-  noMacrosTpl: Ttpl;
   accounts: Taccounts;
 
 var
@@ -76,6 +73,7 @@ var
   cfgPath, tmpPath: string;
   GMToffset: integer; // in minutes
   externalIP: string;
+  useIPv6: Boolean;
 
 var
   onlyDotsRE: TRegExpr;
@@ -84,7 +82,7 @@ var
     lastOut, lastIn: int64; // save bytesSent and bytesReceived last values
     maxV: int64;    // max value in scale
     size: integer;    // height of the box
-    samplesIn, samplesOut: array [0..3000] of int64; // 1 sample, 1 pixel
+    samplesIn, samplesOut: array [0..graphSamplesLenth-1] of int64; // 1 sample, 1 pixel
     beforeRecalcMax: integer;  // countdown
    end;
   flashOn: string;             // describes when to flash the taskbar
@@ -93,9 +91,13 @@ var
     apacheFormat: string;
     apacheZoneString: string;
    end;
-  setThreadExecutionState: function(d:dword):dword; stdcall; // as variable, because not available on Win95
+  setThreadExecutionState: function(d: DWord): DWord; stdcall; // as variable, because not available on Win95
+
+  staticVars: THashedStringList; // these scripting variables are held for the whole run-time
+  eventScripts: Ttpl;
 
   function applyThumbsExtStr(str: String): Boolean;
+  function objByIP(srv: ThttpSrv; const ip: String): TperIp;
 
 implementation
   uses
@@ -121,6 +123,18 @@ begin
       thumbsShowToExtStr := str;
     end;
 end;
+
+function objByIP(srv: ThttpSrv; const ip: String): TperIp;
+var
+  i: integer;
+begin
+  i := ip2obj.indexOf(ip);
+  if i < 0 then
+    i := ip2obj.add(ip);
+  if ip2obj.objects[i] = NIL then
+    ip2obj.objects[i] := TperIp.create(srv);
+  result := ip2obj.objects[i] as TperIp;
+end; // objByIP
 
 
 

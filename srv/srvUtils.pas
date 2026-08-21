@@ -23,7 +23,7 @@ uses
 type
   TreCB = procedure(re: TregExpr; var res: String; data: Pointer);
 
-  function xtpl(src: UnicodeString; const table: array of UnicodeString): UnicodeString; OverLoad;
+  function xtpl(const src: UnicodeString; const table: array of UnicodeString): UnicodeString; OverLoad;
   function xtpl(src: RawByteString; table: array of RawByteString): RawByteString; OverLoad;
   function xtpl(src: UnicodeString; table: TMacroTableVal): UnicodeString; OverLoad;
   function escapeNL(s: String): String;
@@ -41,7 +41,7 @@ type
   procedure enforceNUL(var s: UnicodeString); OverLoad;
   procedure enforceNUL(var s: RawbyteString); OverLoad;
   function  nonEmptyConcat(const pre, s: String; const post: String=''): String;
-  function  dequote(const s:string; quoteChars:TcharSetW=['"']):string;
+  function  dequote(const s: String; quoteChars:TcharSetW=['"']):string;
   function  removeStartingStr(const ss, s: String): String;
   procedure excludeTrailingString(var s: String; const ss: String); OverLoad;
  {$IFNDEF UNICODE}
@@ -120,7 +120,7 @@ type
   function  idxOf(const s: String; a: array of string; isSorted:boolean=FALSE): Integer; OverLoad;
   function  idxOf(const s: UnicodeString; a: array of UnicodeString; isSorted:boolean=FALSE): Integer; OverLoad;
 
-  function match(mask, txt: pchar; fullMatch:boolean=TRUE; charsNotWildcard: TcharsetW=[]): Integer;
+  function match(mask, txt: PChar; fullMatch: Boolean=TRUE; charsNotWildcard: TcharsetW=[]): Integer;
   function filematch(mask: String; const fn: String): Boolean;
   function validFilepath(const fn: UnicodeString; acceptUnits: Boolean=TRUE): Boolean;
   function validFilename(const s: String): Boolean;
@@ -230,6 +230,7 @@ type
   function hasJunction(const fn: UnicodeString): UnicodeString;
   function deltree(path: UnicodeString): Boolean;
   function forceDirectory(path: UnicodeString): Boolean;
+  function getTempDir(): String;
   function moveToBin(const fn: UnicodeString; force: Boolean=FALSE): Boolean; overload;
   function moveToBin(files: TUnicodeStringDynArray; force: Boolean=FALSE): Boolean; overload;
   function saveFileA(fn: String; const data: RawByteString; append:boolean=FALSE): boolean; overload;   // Use RDFileUtil instead!
@@ -263,6 +264,18 @@ type
 
   function evalFormula(s: String): Real;
 
+  function loadDescriptionFile(const lp: TLoadPrefs; const fn: String): String;
+  function escapeIon(const s: String): String;
+  function unescapeIon(s: String): String;
+  procedure loadIon(const lp: TLoadPrefs; const path: String; comments: TstringList);
+
+  function getSafeHost(cd: TconnDataMain): String;
+
+  function ZEncodeW(const s: string; encoding: TZEncoding): String;
+  function ZEncodeA(const s: RawByteString; encoding: TZencoding): RawByteString;
+  function unzipRaw(const s: String): RawByteString;
+  function unzipS(const s: String): String;
+
 type
   TfastRStringAppend = class
     const incStep: Integer = 20000;
@@ -270,24 +283,42 @@ type
     buff: RawByteString;
     n: integer;
    public
-    function length():integer;
+//    function length():integer;
     function reset(): RawByteString;
     function get(): RawByteString;
     function append(const s: RawByteString): Integer;
+    property Length: Integer read n;
   end;
 
-  TFastUStringAppend = class
+  TFastUStringAppend2 = class
     const incStep: Integer = 20000;
    protected
-    buff: UnicodeString;
+    FData: UnicodeString;
     n: integer;
+    function GetChars(Index: Integer): Char;
+    procedure SetChars(Index: Integer; Value: Char);
    public
-    function length():integer;
+    constructor Create(const str: UnicodeString = ''); ReIntroduce;
+    function getLength(): Integer;
     function reset(): UnicodeString;
-    function get(): UnicodeString;
+    function get(UpdateCapacity: Boolean = false): UnicodeString;
     function append(const s: UnicodeString): Integer;
+    function Insert(Index: Integer; const Value: UnicodeString): TFastUStringAppend2;
+    function Remove(Index: Integer; len: Integer): TFastUStringAppend2;
+    //function PosEx(const str: UnicodeString; pos: Integer): Integer;
+    function PosEx(const str: UnicodeString; pos: SizeUInt): Integer;
+    function SubStr(start: Integer; upTo: Integer=0): UnicodeString;
+    function replace(const ss: UnicodeString; start, upTo: Integer): Integer; OverLoad;
+    function strAt(const ss: UnicodeString; at: Integer): Boolean; inline;
+    function getChar(idx: Integer): Char;
+//    function Equals(fastUStringAppend2: TFastUStringAppend2): Boolean; reintroduce;
+    function Equals(const Str: UnicodeString): Boolean; reintroduce;
+
+    property Length: Integer read n;
+    property Chars[index: Integer]: Char read GetChars write SetChars; default;
   end;
 
+  TFastUStringAppend = TFastUStringAppend2;
 const
   {$IFDEF FPC}
   PTR1: Pointer = ptr(1, 0);
@@ -299,7 +330,11 @@ const
 implementation
 uses
   math, SysUtils, strutils, iniFiles, DateUtils,
+  {$IFDEF FMX}
+  ics.fmx.OverbyteIcsWSocket,
+  {$ELSE}
   OverbyteIcsWSocket,
+  {$ENDIF FMX}
  {$IFNDEF FPC}
   UIConsts,
   OverbyteIcsTypes,
@@ -312,12 +347,13 @@ uses
  {$ENDIF USE_MORMOT_COLLECTIONS}
   Base64,
   RDUtils, RnQCrypt, RD.Zip,
+  RDFileUtil,
   {$IFDEF UNICODE}
   ansistrings,
   {$ENDIF UNICODE}
-  HSUtils,
-  serverLib,
-  srvVars;
+  HSUtils, srvVars,
+  serverLib
+  ;
 
 resourcestring
   LIMIT = 'Limit';
@@ -328,9 +364,6 @@ var
 
 
 //////////// TfastRStringAppend
-
-function TfastRStringAppend.length():integer;
-begin result:=n end;
 
 function TfastRStringAppend.get(): RawByteString;
 begin
@@ -361,69 +394,249 @@ begin
   result:=n;
 end; // append
 
-//////////// TFastUStringAppend
+//////////// TFastUStringAppend2
 
-function TFastUStringAppend.length():integer;
-begin result:=n end;
-
-function TFastUStringAppend.get(): UnicodeString;
+constructor TFastUStringAppend2.Create(const str: UnicodeString);
 begin
-  setlength(buff, n);
-  result:=buff;
+  FData := str;
+  n := system.Length(str);
+end;
+
+function TFastUStringAppend2.getLength(): Integer;
+begin
+  result := n
+end;
+
+function TFastUStringAppend2.get(UpdateCapacity: Boolean): UnicodeString;
+begin
+  if UpdateCapacity then
+    begin
+      setlength(FData, n);
+      result := FData;
+    end
+   else
+    begin
+      Result := Copy(FData, 1, n);
+    end;
 end; // get
 
-function TFastUStringAppend.reset(): UnicodeString;
+function TFastUStringAppend2.reset(): UnicodeString;
 begin
-  result:=get();
-  buff:='';
-  n:=0;
+  result := get(True);
+  FData := '';
+  n := 0;
 end; // reset
 
-function TFastUStringAppend.append(const s: UnicodeString): integer;
+function TFastUStringAppend2.append(const s: UnicodeString): integer;
 var
   ls, lb: integer;
 begin
   ls := system.length(s);
   if ls > 0 then
     begin
-      lb := system.length(buff);
+      lb := system.length(FData);
       if n+ls > lb then
-        setlength(buff, lb+ls + incStep);
+        setlength(FData, lb+ls + incStep);
      {$IFDEF FPC}
-      Move(s[1], buff[n+1], ls * sizeOf(UnicodeChar));
+      Move(s[1], FData[n+1], ls * sizeOf(UnicodeChar));
      {$ELSE FPC}
-      MoveChars(s[1], buff[n+1], ls);
+      MoveChars(s[1], FData[n+1], ls);
      {$ENDIF FPC}
       inc(n, ls);
     end;
-  result:=n;
+  result := n;
 end; // append
 
+function TFastUStringAppend2.getChar(idx: Integer): Char;
+begin
+  Result := Self.FData[idx];
+end;
 
-function xtpl(src: UnicodeString; const table: array of UnicodeString): UnicodeString;
+function TFastUStringAppend2.Equals(const Str: UnicodeString): Boolean;
+begin
+  Result := //(StringBuilder <> nil) and
+       (Self.Length = System.Length(Str)) and
+    ((Length = 0) or
+    CompareMem(Pointer(FData), Pointer(Str), Length * SizeOf(Char)));
+end;
+
+function TFastUStringAppend2.GetChars(Index: Integer): Char;
+begin
+  Result := Self.FData[Index];
+end;
+
+procedure TFastUStringAppend2.SetChars(Index: Integer; Value: Char);
+begin
+  Self.FData[Index] := Value;
+end;
+
+//function TFastUStringAppend2.PosEx(const str: String; pos: Integer): Integer;
+function TFastUStringAppend2.PosEx(const str: UnicodeString; pos: SizeUInt): Integer;
+begin
+  //Result := StrUtils.PosEx(str, Self.FData, pos);
+  Result := StrUtils.posEx(str, Self.FData, pos);
+  if (System.Length(str) + Result + -1) > n then
+    Result := 0;
+end;
+
+function TFastUStringAppend2.SubStr(start: Integer; upTo: Integer=0): UnicodeString;
+begin
+  if (start > n) then
+    Result := ''
+   else
+    begin
+      if (upTo > n) then
+        upTo := n;
+      if start = 0 then
+        inc(start)
+       else if start < 0 then
+        start := n+start+1;
+      if upTo <= 0 then
+        upTo := n+upTo;
+      result := copy(Self.FData, start, upTo-start+1)
+    end;
+end;
+
+function TFastUStringAppend2.Insert(Index: Integer; const Value: UnicodeString): TFastUStringAppend2;
+var
+  OldLength: Integer;
+  Len2: Integer;
+begin
+  //if (Index < 0) or (Index > Length) then
+    //RangeIndexError(Index, Length, Self);
+
+  OldLength := n;
+  len2 := System.Length(Value);
+  if len2 > 0 then
+    begin
+      n := n + len2;
+      if n > system.Length(FData) then
+        begin
+          SetLength(FData, n + incStep);
+        end;
+
+      if (OldLength > Index) then
+        Move(FData[Index], FData[Index + len2], (OldLength - Index+1) * SizeOf(UnicodeChar));
+      //Move(Value[Low(string)], FData[Index], len2 * SizeOf(Char));
+      Move(Value[1], FData[Index], len2 * SizeOf(UnicodeChar));
+    end;
+  Result := Self;
+end;
+
+function TFastUStringAppend2.Remove(Index: Integer; len: Integer): TFastUStringAppend2;
+var
+  len2: Integer;
+  cl: Integer;
+begin
+  if len > 0 then
+    begin
+      if (Index + len - 1) > n then
+        len2 := n - Index + 1
+       else
+        len2 := len;
+      cl := n - (Index-1 + len2);
+      if cl > 0 then
+      {$IFDEF FPC}
+        Move(FData[Index+len2], FData[Index], cl * SizeOf(UnicodeChar));
+      {$ELSE ~FPC}
+        MoveChars(FData[Index+len2], FData[Index], cl);
+      {$ENDIF FPC}
+      n := n - len2;
+    end;
+  Result := Self;
+end;
+
+function TFastUStringAppend2.replace(const ss: UnicodeString; start, upTo: Integer): Integer;
+var
+  common, oldL, newL, surplus: Integer;
+  needMove: Boolean;
+begin
+  Assert(start <= Self.Length, 'start more than length');
+  Assert(upTo  <= Self.Length, 'upTo more than length');
+  Assert(start <= upTo, 'start more than upTo');
+
+  oldL := upTo-start+1;
+  newL := system.Length(ss);
+  common := min(newL, oldL);
+  needMove := oldL <> newL;
+  surplus := oldL - newL;
+
+  if common > 0 then
+   begin
+    if (upTo = n) then
+      // Just append
+      begin
+        if ((newL>oldL)) and (system.Length(FData) < (n + newL - oldL)) then
+          SetLength(FData, n + newL - oldL + incStep);
+        n := n + newL - oldL;
+        upTo := n;
+//        oldL := upTo-start+1;
+        oldL := newL;
+        if newL>oldL then
+          common := newL;
+        needMove := False;
+      end;
+    UniqueString(self.fdata);
+   {$IFDEF FPC}
+    //MoveChar0(ss[1], s[start], common * sizeOf( unicodeChar));
+    Move(ss[1], self.fdata[start], common * sizeOf( unicodeChar));
+   {$ELSE ~FPC}
+    MoveChars(ss[1], self.fdata[start], common);
+   {$ENDIF FPC}
+   end;
+  if needMove then
+    begin
+      if surplus > 0 then
+        Self.Remove(start+system.Length(ss), surplus)
+       else if surplus < 0 then
+        Self.Insert(start+common, copy(ss, common+1, -surplus));
+    end;
+  result := -surplus;
+end;
+
+function TFastUStringAppend2.strAt(const ss: UnicodeString; at: Integer): Boolean;
+var
+  l: Integer;
+begin
+  l := system.Length(ss);
+  if (ss = '') or (Self.Length < at+l-1) then
+    result := FALSE
+  else if l >= 1 then
+    begin
+      result := Self.fdata[at] = ss[1];
+      if result and (l >= 2) then
+        result := (Self.fdata[at+1] = ss[2]);
+      if Result and (l > 2) then
+        result:= (SubStr(at, at + l) = ss);
+    end;
+end;
+
+
+function xtpl(const src: UnicodeString; const table: array of UnicodeString): UnicodeString;
 var
   i: integer;
 begin
   i := 0;
+  Result := src;
   while i < length(table) do
    begin
-    src := SysUtils.StringReplace(src,table[i],table[i+1],[rfReplaceAll,rfIgnoreCase]);
+    Result := SysUtils.StringReplace(Result,table[i],table[i+1],[rfReplaceAll,rfIgnoreCase]);
     inc(i, 2);
    end;
-  result := src;
+  //result := src;
 end; // xtpl
 
 function xtpl(src: RawByteString; table:array of RawByteString): RawByteString;
 var
   i: integer;
 begin
-i:=0;
-while i < length(table) do
-  begin
-  src:=stringReplace(src,table[i],table[i+1],[rfReplaceAll,rfIgnoreCase]);
-  inc(i, 2);
-  end;
-result:=src;
+  i:=0;
+  while i < length(table) do
+    begin
+    src := stringReplace(src,table[i],table[i+1],[rfReplaceAll,rfIgnoreCase]);
+    inc(i, 2);
+    end;
+  result:=src;
 end; // xtpl
 
 function xtpl(src: UnicodeString; table: TMacroTableVal): UnicodeString; OverLoad;
@@ -897,7 +1110,7 @@ begin
       't': res := '['
         +xtpl(formatDatetime(APACHE_TIMESTAMP_FORMAT, now()),
            ['!!!',MONTH2STR[monthOf(now())]])
-        +' '+logfile.apacheZoneString+']';
+        +' '+ logFile.apacheZoneString+']';
       'r': res:= UnUTF(getTill(CRLFA, cd.conn.httpRequest.full));
       's': res := code;
       'B': res := intToStr(cd.conn.bytesSentLastItem);
@@ -921,11 +1134,21 @@ begin
 end; // apacheLogCb
 
 function if_(v:boolean; v1:boolean; v2:boolean=FALSE):boolean;
-begin if v then result:=v1 else result:=v2 end;
+begin
+  if v then
+    result:=v1
+   else
+    result:=v2
+end;
 
 {$IFDEF UNICODE}
-function if_(v:boolean; const v1, v2:string):string;
-begin if v then result:=v1 else result:=v2 end;
+function if_(v:boolean; const v1, v2:string): String;
+begin
+  if v then
+    result:=v1
+   else
+    result:=v2
+end;
 {$ENDIF UNICODE}
 
 function if_(v: Boolean; const v1, v2: RawByteString): RawByteString;
@@ -937,13 +1160,28 @@ begin
 end;
 
 function if_(v:boolean; v1,v2:int64):int64;
-begin if v then result:=v1 else result:=v2 end;
+begin
+  if v then
+    result:=v1
+   else
+    result:=v2
+end;
 
 function if_(v:boolean; v1, v2:integer):integer;
-begin if v then result:=v1 else result:=v2 end;
+begin
+  if v then
+    result:=v1
+   else
+    result:=v2
+end;
 
 function if_(v:boolean; v1, v2:Tobject):Tobject;
-begin if v then result:=v1 else result:=v2 end;
+begin
+  if v then
+    result:=v1
+   else
+    result:=v2
+end;
 
 function dequote(const s:string; quoteChars:TcharSetW=['"']):string;
 begin
@@ -971,6 +1209,7 @@ begin
       setLength(s, i);
 end;
 
+ {$IFNDEF UNICODE}
 procedure excludeTrailingString(var s: String; const ss: String);
 var
   i: integer;
@@ -980,6 +1219,7 @@ begin
     if copy(s, i+1, length(ss)) = ss then
       setLength(s, i);
 end;
+ {$ENDIF ~UNICODE}
 
 function countSubstr(const ss: String; const s: String): Integer;
 var
@@ -1022,9 +1262,13 @@ end; // smartsize
 
 function elapsedToStr(t: TDateTime): String;
 var
-  sec: integer;
+  sec: int64;
 begin
-  sec := trunc(t*SECONDS);
+  try
+    sec := trunc(t*SECONDS);
+   except
+    sec := MaxInt;
+  end;
   result := format('%d:%.2d:%.2d', [sec div 3600, sec div 60 mod 60, sec mod 60] );
 end; // elapsedToStr
 
@@ -1184,7 +1428,9 @@ result:=-1;
 end;
 
 function stringExists(const s: String; const a: array of String; isSorted: Boolean=FALSE): Boolean;
-begin result:= idxOf(s,a, isSorted) >= 0 end;
+begin
+  result := idxOf(s,a, isSorted) >= 0
+end;
 
 function stringExists(const s: UnicodeString; const a: array of UnicodeString; isSorted: Boolean=FALSE): Boolean;
 begin result:= idxOf(s,a, isSorted) >= 0 end;
@@ -1200,66 +1446,70 @@ end; // toggleString
 
 function onlyString(const s: String; ss: TStringDynArray): boolean;
 // we are case insensitive, just like other functions in this set
-begin result:=(length(ss) = 1) and sameText(ss[0], s) end;
+begin
+  result := (length(ss) = 1) and sameText(ss[0], s)
+end;
 
-function match(mask, txt:pchar; fullMatch:boolean; charsNotWildcard:TcharsetW):integer;
+function match(mask, txt: PChar; fullMatch: Boolean; charsNotWildcard: TcharsetW): Integer;
 // charsNotWildcard is for chars that are not allowed to be matched by wildcards, like CR/LF
 var
   i: integer;
 begin
-result:=0;
-// 1 to 1 match
-while not (mask^ in [#0,'*'])
-and (txt^ <> #0)
-and (
-  (ansiUpperCase(mask^) = ansiUpperCase(txt^))
-  or (upCase(mask^) = upCase(txt^))
-  or (mask^ = '?') and not (txt^ in charsNotWildcard)
-) do
-  begin
-  inc(mask);
-  inc(txt);
-  inc(result);
-  end;
-if (mask^ = #0) and (not fullMatch or (txt^ = #0)) then
-  exit;
-if mask^ <> '*' then
-  begin
   result:=0;
-  exit;
-  end;
-while mask^ = '*' do inc(mask);
-if mask^ = #0 then // final *, anything matches
-  begin
-  inc(result, strLen(txt));
-  exit;
-  end;
-  repeat
-  if txt^ in charsNotWildcard then break;
-
-  if fullMatch and (strpos(mask,'*') = NIL) then
-    begin // we just passed last * so we are trying to match the final part of txt. This block is just an optimization. It happens often because of mime types and masks like *.css
-    i:=length(txt)-length(mask);
-    if i < 0 then break; // not enough characters left
-    // move forward of the minimum part that's required to be covered by the last *
-    inc(txt, i);
-    inc(result, i);
-    i:=match(mask, txt, fullMatch);
-    if i = 0 then break; // no more chances
-    end
-  else
-    i:=match(mask, txt, fullMatch);
-
-  if i > 0 then
+  // 1 to 1 match
+  while not (mask^ in [#0,'*'])
+  and (txt^ <> #0)
+  and (
+    (ansiUpperCase(mask^) = ansiUpperCase(txt^))
+    or (upCase(mask^) = upCase(txt^))
+    or (mask^ = '?') and not (txt^ in charsNotWildcard)
+  ) do
     begin
-    inc(result, i);
-    exit;
+      inc(mask);
+      inc(txt);
+      inc(result);
     end;
-  // we're after a *, next part may match at any point, so try it in every way
-  inc(txt);
-  inc(result);
+  if (mask^ = #0) and (not fullMatch or (txt^ = #0)) then
+    exit;
+  if mask^ <> '*' then
+    begin
+      result:=0;
+      exit;
+    end;
+  while mask^ = '*' do
+    inc(mask);
+  if mask^ = #0 then // final *, anything matches
+    begin
+      inc(result, strLen(txt));
+      exit;
+    end;
+  repeat
+    if txt^ in charsNotWildcard then
+      break;
+
+    if fullMatch and (strpos(mask,'*') = NIL) then
+      begin // we just passed last * so we are trying to match the final part of txt. This block is just an optimization. It happens often because of mime types and masks like *.css
+        i:=length(txt)-length(mask);
+        if i < 0 then break; // not enough characters left
+        // move forward of the minimum part that's required to be covered by the last *
+        inc(txt, i);
+        inc(result, i);
+        i:=match(mask, txt, fullMatch);
+        if i = 0 then break; // no more chances
+      end
+     else
+      i:=match(mask, txt, fullMatch);
+
+    if i > 0 then
+      begin
+        inc(result, i);
+        exit;
+      end;
+    // we're after a *, next part may match at any point, so try it in every way
+    inc(txt);
+    inc(result);
   until txt^ = #0;
-result:=0;
+  result:=0;
 end; // match
 
 function filematch(mask: String; const fn: String): boolean;
@@ -1635,10 +1885,14 @@ begin
 end; // addUniqueString
 
 procedure insertstring(const s: String; idx: Integer; var ss: TStringDynArray);
-begin addArray(ss, [s], idx) end;
+begin
+  addArray(ss, [s], idx)
+end;
 
 procedure insertString(const s: String; idx: Integer; var ss: TUnicodeStringDynArray);
-begin addArray(ss, [s], idx) end;
+begin
+  addArray(ss, [s], idx)
+end;
 
 function removestring(var a:TStringDynArray; idx:integer; l:integer=1):boolean;
 begin
@@ -1946,10 +2200,14 @@ for i:=1 to length(s) do
 end; // strToCharset
 
 function anycharIn(chars:TcharsetW; const s:string):boolean;
-begin result:=poss(chars, s) > 0 end;
+begin
+  result:=poss(chars, s) > 0
+end;
 
 function anycharIn(const chars, s:string):boolean;
-begin result:=anyCharIn(strToCharset(chars), s) end;
+begin
+  result:=anyCharIn(strToCharset(chars), s)
+end;
 
 function quoteIfAnyChar(const badChars: String; s:string; const quote:string='"'; const unquote:string='"'):string;
 begin
@@ -2227,13 +2485,17 @@ end; // name2mimetype
 
 function strSHA256(const s: String): String;
 //begin result:=THashSHA2.GetHashString(s) end;
-begin result:= SHA256PassLS(UTF8Encode(s)) end;
+begin
+  result:= SHA256PassLS(UTF8Encode(s))
+end;
 
 //function strMD5(s:string):string;
 //begin result:=THashMD5.GetHashString(s) end;
 
 function strMD5(const s: String): String;
-begin Result := LowerCase(MD5PassHS(UTF8Encode(s))); end;
+begin
+  Result := LowerCase(MD5PassHS(UTF8Encode(s)));
+end;
 
 {$IFOPT Q+}{$DEFINE QOn}{$Q-}{$ELSE}{$UNDEF QOn}{$ENDIF}
 function getCRC(const data: RawByteString): Integer;
@@ -2371,7 +2633,9 @@ result:=result xor invert;
 end; // addressMatch
 
 function b64utf8(const s: String): RawByteString;
-begin result := Base64EncodeString(UTF8encode(s)); end;
+begin
+  result := Base64EncodeString(UTF8encode(s));
+end;
 
 function b64utf8S(const s: String): String;
 begin
@@ -2379,25 +2643,39 @@ begin
 end;
 
 function b64utf8W(const s: String): UnicodeString;
-begin result:=Base64EncodeString(UTF8encode(s)); end;
+begin
+  result:=Base64EncodeString(UTF8encode(s));
+end;
 
 function b64U(const b: RawByteString): UnicodeString;
-begin result:=Base64EncodeString(b); end;
+begin
+  result:=Base64EncodeString(b);
+end;
 
 function b64R(const b: RawByteString): RawByteString;
-begin result:=Base64EncodeString(b); end;
+begin
+  result:=Base64EncodeString(b);
+end;
 
-function decodeB64utf8(const s: RawByteString):string; OverLoad;
-begin result:=UnUTF(Base64DecodeString(s)); end;
+function decodeB64utf8(const s: RawByteString): String; OverLoad;
+begin
+  result:=UnUTF(Base64DecodeString(s));
+end;
 
-function decodeB64utf8(const s: String):string; OverLoad;
-begin result:=UnUTF(Base64DecodeString(s)); end;
+function decodeB64utf8(const s: String): String; OverLoad;
+begin
+  result := UnUTF(Base64DecodeString(s));
+end;
 
 function decodeB64(const s: String): RawByteString; OverLoad;
-begin result:=Base64DecodeString(s); end;
+begin
+  result:=Base64DecodeString(s);
+end;
 
 function decodeB64(const s: RawByteString): RawByteString; OverLoad;
-begin result:=Base64DecodeString(s); end;
+begin
+  result:=Base64DecodeString(s);
+end;
 
 function jsEncode(s: String; const chars: String): String;
 var
@@ -2424,10 +2702,20 @@ begin
 end;
 
 function TLV_NOT_EMPTY(t: integer; const data: RawByteString): RawByteString;
-begin if data > '' then result:=TLV(t,data) else result:='' end;
+begin
+  if data > '' then
+    result:=TLV(t,data)
+   else
+    result:=''
+end;
 
 function TLVS_NOT_EMPTY(t: integer; const data: String): RawByteString;
-begin if data > '' then result:=TLV(t, StrToUTF8(data)) else result:='' end;
+begin
+  if data > '' then
+    result:=TLV(t, StrToUTF8(data))
+   else
+    result:=''
+end;
 
 // converts from integer to string[4]
 function str_(i: integer): RawByteString; overload;
@@ -2438,7 +2726,9 @@ end; // str_
 
 // converts from boolean to string[1]
 function str_(b: boolean):RawByteString; overload;
-begin result:= Ansichar(b) end;
+begin
+  result := Ansichar(b)
+end;
 
 // converts from Tdatetime to string[8]
 function str_(t: Tdatetime): RawByteString; overload;
@@ -2530,22 +2820,40 @@ for i:=0 to length(a)-1 do
 end; // first
 
 function first(const a,b: String): String;
-begin if a = '' then result:=b else result:=a end;
+begin
+  if a = '' then
+    result:=b
+   else
+    result:=a
+end;
 
 function first(const a, b: UnicodeString): UnicodeString;
-begin if a = '' then result:=b else result:=a end;
+begin
+  if a = '' then result:=b else result:=a
+end;
 
 function first(a,b:integer):integer;
-begin if a = 0 then result:=b else result:=a end;
+begin
+  if a = 0 then
+    result:=b
+   else
+    result:=a
+end;
 
 function first(a,b:double):double;
-begin if a = 0 then result:=b else result:=a end;
+begin
+  if a = 0 then result:=b else result:=a
+end;
 
 function first(a,b:pointer):pointer;
-begin if a = NIL then result:=b else result:=a end;
+begin
+  if a = NIL then result:=b else result:=a
+end;
 
 function boolToPtr(b:boolean):pointer;
-begin result:=if_(b, PTR1, NIL) end;
+begin
+  result:=if_(b, PTR1, NIL)
+end;
 
 function diskSpaceAt(path:string):int64;
 var
@@ -2636,7 +2944,9 @@ for i:=0 to length(accounts)-1 do
 end; // getAccount
 
 function accountExists(const user:string; evenGroups:boolean=FALSE):boolean;
-begin result:=getAccount(user, evenGroups) <> NIL end;
+begin
+  result:=getAccount(user, evenGroups) <> NIL
+end;
 
 // this function follows account linking until it finds and returns the account matching the stopCase
 function accountRecursion(account:Paccount; stopCase:TaccountRecursionStopCase; data:pointer=NIL; data2:pointer=NIL):Paccount;
@@ -2679,7 +2989,9 @@ while i < length(toCheck) do
 end; // accountRecursion
 
 function findEnabledLinkedAccount(account:Paccount; over:TStringDynArray; isSorted:boolean=FALSE):Paccount;
-begin result:=accountRecursion(account, ARSC_IN_SET, over, boolToPtr(isSorted)) end;
+begin
+  result:=accountRecursion(account, ARSC_IN_SET, over, boolToPtr(isSorted))
+end;
 
 function filetimeToDatetime(ft:TFileTime):Tdatetime;
 var
@@ -2769,7 +3081,7 @@ begin
 
   if onlyDotsRE = NIL then
   begin
-    onlyDotsRE:=TRegExpr.Create;
+    onlyDotsRE := TRegExpr.Create;
     onlyDotsRE.modifierM:=TRUE;
     onlyDotsRE.expression:='(^|\\)\.\.+($|\\)';
     onlyDotsRE.compile();
@@ -2885,6 +3197,11 @@ begin
   result := createDir(path);
 end; // forceDirectory
 
+function getTempDir(): String;
+begin
+  setLength(result, 1000);
+  setLength(result, getTempPath(length(result), @result[1]));
+end; // getTempDir
 
 function moveToBin(const fn: UnicodeString; force:boolean=FALSE):boolean; overload;
 begin
@@ -3079,13 +3396,19 @@ begin
 end; // localDNSget
 
 function safeMod(a, b: int64; default: int64=0): int64;
-begin if b=0 then result:=default else result:=a mod b end;
+begin
+  if b=0 then result:=default else result:=a mod b
+end;
 
 function safeDiv(a, b: int64; default: int64=0): int64; inline;
-begin if b=0 then result:=default else result:=a div b end;
+begin
+  if b=0 then result:=default else result:=a div b
+end;
 
 function safeDiv(a, b: real; default: real=0): real; inline;
-begin if b=0 then result:=default else result:=a/b end;
+begin
+  if b=0 then result:=default else result:=a/b
+end;
 
 // useful for casing on the first char
 function getFirstChar(const s: String): Char;
@@ -3178,7 +3501,7 @@ end;
 procedure drawGraphOn(cnv: Tcanvas; colors: TIntegerDynArray=NIL);
 var
   i, h, maxV, sI: integer;
-  r: Trect;
+  r: TRectF;
   rt: TRectF;
   top: double;
   s: string;
@@ -3208,57 +3531,61 @@ begin
   r.Top := 0;
   r.Right := cnv.Width;
   r.Bottom := cnv.Height;
-  cnv.Clear(getColor(0, TColorRec.Black));
-  // draw grid
-  i := 0;
-  clr := getColor(1, rgb(0,0,120));
-  while i < cnv.Width do
-    begin
-      cnv.DrawLine(PointF(i, r.top), PointF(i, r.Bottom), 1, TStrokeBrush.Create(TBrushKind.Solid, clr));
-      inc(i,10);
-    end;
-  i:=r.bottom;
-  while i > r.top do
-    begin
-      cnv.DrawLine(PointF(r.left, i), PointF(r.right, i), 1, TStrokeBrush.Create(TBrushKind.Solid, clr));
-      dec(i,10);
-    end;
+  if cnv.BeginScene() then
+   begin
+    cnv.Clear(getColor(0, TColorRec.Black));
+    // draw grid
+    i := 0;
+    clr := getColor(1, rgb(0,0,120));
+    while i < cnv.Width do
+      begin
+        cnv.DrawLine(PointF(i, r.top), PointF(i, r.Bottom), 1, TStrokeBrush.Create(TBrushKind.Solid, clr));
+        inc(i,10);
+      end;
+    i := Round(r.bottom);
+    while i > r.top do
+      begin
+        cnv.DrawLine(PointF(r.left, i), PointF(r.right, i), 1, TStrokeBrush.Create(TBrushKind.Solid, clr));
+        dec(i,10);
+      end;
 
-  maxV := max(graph.maxV, 1);
-  h := r.bottom-r.top-1;
-  // draw graph
-  if r.Right > r.left then
-    begin
-      sI := Min((r.Right-r.left)-1, Length(graph.samplesOut)-1);
-      clr := getColor(2, TColorRec.Fuchsia);
-      for i:=0 to sI do
-        drawSample(graph.samplesOut[i], clr);
-      clr := getColor(3, TColorRec.Yellow);
-      for i:=0 to sI do
-        drawSample(graph.samplesIn[i], clr);
-    end;
+    maxV := max(graph.maxV, 1);
+    h := Round(r.bottom-r.top-1);
+    // draw graph
+    if r.Right > r.left then
+      begin
+        sI := Min(Trunc(r.Right-r.left)-1, Length(graph.samplesOut)-1);
+        clr := getColor(2, TColorRec.Fuchsia);
+        for i:=0 to sI do
+          drawSample(graph.samplesOut[i], clr);
+        clr := getColor(3, TColorRec.Yellow);
+        for i:=0 to sI do
+          drawSample(graph.samplesIn[i], clr);
+      end;
 
-  // text
-//  cnv.Font.color := getColor(4, clLtGray);
-  cnv.Font.Family := 'Small Fonts';
-  cnv.font.size := 7;
+    // text
+  //  cnv.Font.color := getColor(4, clLtGray);
+    cnv.Font.Family := 'Small Fonts';
+    cnv.font.size := 7;
 
-  top := (graph.maxV/1000)*safeDiv(10.0, graph.rate);
-  s := format(TOP_SPEED+':'+MSG_SPEED_KBS+'    ---    %d kbps', [top, round(top*8)]);
-//  w := cnv.TextWidth(s);
-  rt.Left := r.Right - cnv.TextWidth(s) - 20 * cnv.Scale;
-  rt.Top := 3 * cnv.Scale;
-  rt.Bottom := r.Bottom;
+    top := (graph.maxV/1000)*safeDiv(10.0, graph.rate);
+    s := format(TOP_SPEED+':'+MSG_SPEED_KBS+'    ---    %d kbps', [top, round(top*8)]);
+  //  w := cnv.TextWidth(s);
+    rt.Left := r.Right - cnv.TextWidth(s) - 20 * cnv.Scale;
+    rt.Top := 3 * cnv.Scale;
+    rt.Bottom := r.Bottom;
 
-  cnv.FillText(rt, s, false, 1, [], TTextAlign.Leading, TTextAlign.Leading);
-  if assigned(globalLimiter) and (globalLimiter.maxSpeed < MAXINT) then
-    begin
-      rt.Left := r.right-(180-25)*cnv.Scale;
-      rt.Top := 15 * cnv.Scale;
-      s := format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]);
-//    cnv.TextOut(r.right-180+25, 15, format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]));
-      cnv.FillText(rt, s, false, 1, [], TTextAlign.Leading, TTextAlign.Leading);
-    end;
+    cnv.FillText(rt, s, false, 1, [], TTextAlign.Leading, TTextAlign.Leading);
+    if assigned(globalLimiter) and (globalLimiter.maxSpeed < MAXINT) then
+      begin
+        rt.Left := r.right-(180-25)*cnv.Scale;
+        rt.Top := 15 * cnv.Scale;
+        s := format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]);
+  //    cnv.TextOut(r.right-180+25, 15, format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]));
+        cnv.FillText(rt, s, false, 1, [], TTextAlign.Leading, TTextAlign.Leading);
+      end;
+    cnv.EndScene;
+   end;
 end; // drawGraphOn
   {$ELSE ~FMX}
 
@@ -3287,51 +3614,60 @@ var
   end; // getColor
 
 begin
-  r := cnv.cliprect;
-  // clear
-  cnv.brush.color := getColor(0, clBlack);
-  cnv.fillrect(r);
-  // draw grid
-  cnv.Pen.color := getColor(1, rgb(0,0,120));
-  i:=r.left;
-  while i < r.right do
-    begin
-      cnv.moveTo(i, r.top);
-      cnv.LineTo(i, r.Bottom);
-      inc(i,10);
-    end;
-  i:=r.bottom;
-  while i > r.top do
-    begin
-      cnv.moveTo(r.left, i);
-      cnv.LineTo(r.right, i);
-      dec(i,10);
-    end;
+ {$IFNDEF FPC}
+  cnv.Lock;
+ {$ENDIF !FPC}
+  try
+    r := cnv.cliprect;
+    // clear
+    cnv.brush.color := getColor(0, clBlack);
+    cnv.fillrect(r);
+    // draw grid
+    cnv.Pen.color := getColor(1, rgb(0,0,120));
+    i:=r.left;
+    while i < r.right do
+      begin
+        cnv.moveTo(i, r.top);
+        cnv.LineTo(i, r.Bottom);
+        inc(i,10);
+      end;
+    i:=r.bottom;
+    while i > r.top do
+      begin
+        cnv.moveTo(r.left, i);
+        cnv.LineTo(r.right, i);
+        dec(i,10);
+      end;
 
-  maxV := max(graph.maxV, 1);
-  h := r.bottom-r.top-1;
-  // draw graph
-  if r.Right > r.left then
-    begin
-      sI := Min((r.Right-r.left)-1, Length(graph.samplesOut)-1);
+    maxV := max(graph.maxV, 1);
+    h := r.bottom-r.top-1;
+    // draw graph
+    if r.Right > r.left then
+      begin
+        sI := Min((r.Right-r.left)-1, Length(graph.samplesOut)-1);
 
-      cnv.Pen.color := getColor(2, clFuchsia);
-      for i:=0 to sI do
-        drawSample(graph.samplesOut[i]);
-      cnv.Pen.color := getColor(3, clYellow);
-      for i:=0 to sI do
-        drawSample(graph.samplesIn[i]);
-    end;
-  // text
-  cnv.Font.Color := getColor(4, clLtGray);
-  cnv.Font.Name := 'Small Fonts';
-  cnv.font.size := 7;
-  SetBkMode(cnv.handle, TRANSPARENT);
-  top := (graph.maxV/1000)*safeDiv(10.0, graph.rate);
-  s := format(TOP_SPEED+':'+MSG_SPEED_KBS+'    ---    %d kbps', [top, round(top*8)]);
-  cnv.TextOut(r.right-cnv.TextWidth(s)-20, 3, s);
-  if assigned(globalLimiter) and (globalLimiter.maxSpeed < MAXINT) then
-    cnv.TextOut(r.right-180+25, 15, format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]));
+        cnv.Pen.color := getColor(2, clFuchsia);
+        for i:=0 to sI do
+          drawSample(graph.samplesOut[i]);
+        cnv.Pen.color := getColor(3, clYellow);
+        for i:=0 to sI do
+          drawSample(graph.samplesIn[i]);
+      end;
+    // text
+    cnv.Font.Color := getColor(4, clLtGray);
+    cnv.Font.Name := 'Small Fonts';
+    cnv.font.size := 7;
+    SetBkMode(cnv.handle, TRANSPARENT);
+    top := (graph.maxV/1000)*safeDiv(10.0, graph.rate);
+    s := format(TOP_SPEED+':'+MSG_SPEED_KBS+'    ---    %d kbps', [top, round(top*8)]);
+    cnv.TextOut(r.right-cnv.TextWidth(s)-20, 3, s);
+    if assigned(globalLimiter) and (globalLimiter.maxSpeed < MAXINT) then
+      cnv.TextOut(r.right-180+25, 15, format(LIMIT+': '+MSG_SPEED_KBS, [globalLimiter.maxSpeed/1000]));
+  finally
+ {$IFNDEF FPC}
+    cnv.Unlock;
+ {$ENDIF !FPC}
+  end;
 end; // drawGraphOn
   {$ENDIF FMX}
 
@@ -3405,68 +3741,69 @@ var
   BytesRead           : DWORD;
   Apprunning,
   BytesLeftThisMessage,
-  TotalBytesAvail : integer;
+  TotalBytesAvail: integer;
 begin
-result:=FALSE;
-output:='';
-sa.nlength:=SizeOf(sa);
-sa.binherithandle:=TRUE;
-sa.lpsecuritydescriptor:=NIL;
+  result:=FALSE;
+  output:='';
+  sa.nlength:=SizeOf(sa);
+  sa.binherithandle:=TRUE;
+  sa.lpsecuritydescriptor:=NIL;
 
-if not createPipe(ReadPipe, WritePipe, @sa, 0) then exit;
-// Redirect In- and Output through STARTUPINFO structure
+  if not createPipe(ReadPipe, WritePipe, @sa, 0) then
+    exit;
+  // Redirect In- and Output through STARTUPINFO structure
   Buffer := AllocMem(ReadBuffer + 1);
   ZeroMemory(@start, Sizeof(Start));
   start.cb:= SizeOf(start);
-start.hStdOutput:= WritePipe;
-start.hStdInput:= ReadPipe;
-start.dwFlags:= STARTF_USESTDHANDLES + STARTF_USESHOWWINDOW;
-start.wShowWindow:= SW_HIDE;
-TotalBytesRead:=0;
-if timeout = 0 then
-  timeout := MaxDouble
-else
-  timeout:=now()+timeout/SECONDS;
-// Create a Console Child Process with redirected input and output
-try
-  if CreateProcess(nil, PChar(DosApp), @sa, @sa, true, CREATE_NO_WINDOW or NORMAL_PRIORITY_CLASS, nil, nil, start, ProcessInfo) then
-    repeat
-    result:=TRUE;
-    // wait for end of child process
-    Apprunning := WaitForSingleObject(ProcessInfo.hProcess,100);
-//    Application.ProcessMessages();
-    // it is important to read from time to time the output information
-    // so that the pipe is not blocked by an overflow. New information
-    // can be written from the console app to the pipe only if there is
-    // enough buffer space.
-    if not PeekNamedPipe(ReadPipe, @Buffer[TotalBytesRead], ReadBuffer,
-      @BytesRead, @TotalBytesAvail, @BytesLeftThisMessage ) then
-      break
-    else if BytesRead > 0 then
-      ReadFile(ReadPipe, Buffer[TotalBytesRead], BytesRead, BytesRead, nil );
-    inc(TotalBytesRead, BytesRead);
-    until (Apprunning <> WAIT_TIMEOUT) or (now() >= timeout);
+  start.hStdOutput:= WritePipe;
+  start.hStdInput:= ReadPipe;
+  start.dwFlags:= STARTF_USESTDHANDLES + STARTF_USESHOWWINDOW;
+  start.wShowWindow:= SW_HIDE;
+  TotalBytesRead:=0;
+  if timeout = 0 then
+    timeout := MaxDouble
+   else
+    timeout:=now()+timeout/SECONDS;
+  // Create a Console Child Process with redirected input and output
+  try
+    if CreateProcess(nil, PChar(DosApp), @sa, @sa, true, CREATE_NO_WINDOW or NORMAL_PRIORITY_CLASS, nil, nil, start, ProcessInfo) then
+     repeat
+      result:=TRUE;
+      // wait for end of child process
+      Apprunning := WaitForSingleObject(ProcessInfo.hProcess,100);
+  //    Application.ProcessMessages();
+      // it is important to read from time to time the output information
+      // so that the pipe is not blocked by an overflow. New information
+      // can be written from the console app to the pipe only if there is
+      // enough buffer space.
+      if not PeekNamedPipe(ReadPipe, @Buffer[TotalBytesRead], ReadBuffer,
+        @BytesRead, @TotalBytesAvail, @BytesLeftThisMessage ) then
+        break
+      else if BytesRead > 0 then
+        ReadFile(ReadPipe, Buffer[TotalBytesRead], BytesRead, BytesRead, nil );
+      inc(TotalBytesRead, BytesRead);
+     until (Apprunning <> WAIT_TIMEOUT) or (now() >= timeout);
 
-  if IsTextUnicode(Buffer, TotalBytesRead, NIL) then
-    begin
-    Pchar(@Buffer[TotalBytesRead])^:= #0;
-    output:=pchar(Buffer)
-    end
-  else
-    begin
-      Buffer[TotalBytesRead]:= #0;
-      buf2 := StrAlloc(ReadBuffer + 1);
-      OemToChar(PansiChar(Buffer), buf2);
-      output := strPas(buf2);
-    end;
-finally
-  GetExitCodeProcess(ProcessInfo.hProcess, exitcode);
-  TerminateProcess(ProcessInfo.hProcess, 0);
-  FreeMem(Buffer);
-  CloseHandle(ProcessInfo.hProcess);
-  CloseHandle(ProcessInfo.hThread);
-  CloseHandle(ReadPipe);
-  CloseHandle(WritePipe);
+    if IsTextUnicode(Buffer, TotalBytesRead, NIL) then
+      begin
+        Pchar(@Buffer[TotalBytesRead])^:= #0;
+        output:=pchar(Buffer)
+      end
+     else
+      begin
+        Buffer[TotalBytesRead]:= #0;
+        buf2 := StrAlloc(ReadBuffer + 1);
+        OemToChar(PansiChar(Buffer), buf2);
+        output := strPas(buf2);
+      end;
+   finally
+    GetExitCodeProcess(ProcessInfo.hProcess, exitcode);
+    TerminateProcess(ProcessInfo.hProcess, 0);
+    FreeMem(Buffer);
+    CloseHandle(ProcessInfo.hProcess);
+    CloseHandle(ProcessInfo.hThread);
+    CloseHandle(ReadPipe);
+    CloseHandle(WritePipe);
   end;
 end; // captureExec
 
@@ -3571,6 +3908,120 @@ begin
   until false;
 end; // evalFormula
 
+function loadDescriptionFile(const lp: TLoadPrefs; const fn: String): String;
+var
+  sa: RawByteString;
+begin
+  result := '';
+  sa := loadFile(fn);
+  if sa = '' then
+    sa := loadFile(fn+'\descript.ion');
+  if (sa > '') and (lpOEMForION in lp) then
+    Result := sa
+   else
+    Result := UnUTF(sa);
+end; // loadDescriptionFile
+
+function escapeIon(const s: String): String;
+begin
+// this escaping method (and also the 2-bytes marker) was reverse-engineered from Total Commander
+  result := escapeNL(s);
+  if result <> s then
+    result := result+#4#$C2;
+end; // escapeIon
+
+function unescapeIon(s: String): String;
+begin
+  if ansiEndsStr(#4#$C2, s) then
+    begin
+      setLength(s, length(s)-2);
+      s := unescapeNL(s);
+    end;
+  result := s;
+end; // unescapeIon
+
+procedure loadIon(const lp: TLoadPrefs; const path: String; comments: TstringList);
+var
+  fn: string;
+  s, l: UnicodeString;
+begin
+  //if not mainfrm.supportDescriptionChk.checked then exit;
+  s := loadDescriptionFile(lp, path);
+  while s > '' do
+    begin
+      l := chopLine(s);
+      if l = '' then
+        continue;
+      fn := chop(nonQuotedPos(' ', l), l);
+      comments.add(dequote(fn)+'='+trim(unescapeIon(l)));
+    end;
+end; // loadIon
+
+function getSafeHost(cd: TconnDataMain): String;
+begin
+  result := '';
+  if cd = NIL then
+    exit;
+  if addressmatch(forwardedMask, cd.conn.address) then
+    result := cd.conn.getHeader('x-forwarded-host');
+  if result = '' then
+    result := cd.conn.getHeader('host');
+  result := stripChars(result, ['0'..'9','a'..'z','A'..'Z',':','.','-','_'], TRUE);
+end; // getSafeHost
+
+
+function ZEncodeW(const s: string; encoding: TZEncoding): String;
+begin
+  case encoding of
+    E_PLAIN: result := s;
+    E_B64: result := b64utf8W(s);
+    E_ZIP:
+      begin
+      result := b64U(zCompressStr(StrToUTF8(s)));
+  //      if length(result) > round(0.95*length(s)) then result:=s;
+  //      result := Base64EncodeString(result);
+      end;
+    end;
+end;
+
+function ZEncodeA(const s: RawByteString; encoding: TZencoding): RawByteString;
+begin
+  case encoding of
+    E_PLAIN: result:=s;
+    E_B64: result:=B64R(s);
+    E_ZIP:
+      begin
+      result := zCompressStr(s);
+      if length(result) > round(0.95*length(s)) then result:=s;
+      result := B64R(result);
+      end;
+    end;
+end;
+
+function unzipRaw(const s: String): RawByteString;
+var
+  sa: RawByteString;
+begin
+  sa := decodeB64(s);
+  try
+    result := ZDecompressStr(sa);
+   except
+    Result := sa;
+  end;
+end; // unzip
+
+function unzipS(const s: String): String;
+var
+  sa: RawByteString;
+begin
+  sa := decodeB64(s);
+  try
+    result := UTF8ToString(ZDecompressStr(sa));
+   except
+    Result := UnUTF(sa);
+  end;
+end; // unzip
+
 
 var
   TZinfo: TTimeZoneInformation;
@@ -3592,6 +4043,7 @@ GMToffset:=-(TZinfo.bias+GMToffset);
 
 
 FINALIZATION
-freeAndNIL(ipToInt_cache);
+  freeAndNIL(ipToInt_cache);
+  freeAndNIL(onlyDotsRE);
 
 end.

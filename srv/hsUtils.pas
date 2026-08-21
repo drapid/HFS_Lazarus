@@ -29,9 +29,6 @@ interface
 
 uses
   classes, messages,
- {$IFNDEF FPC}
-  winprocs,
- {$ENDIF ~FPC}
   contnrs, strUtils,
   types
   ;
@@ -88,7 +85,9 @@ const
   HexCharsW: set of Char = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
                             'A', 'B', 'C', 'D', 'E', 'F']; //
 procedure includeTrailingString(var s: UnicodeString; const ss: UnicodeString);
-begin if copy(s, length(s)-length(ss)+1, length(ss)) <> ss then s:=s+ss end;
+begin
+  if copy(s, length(s)-length(ss)+1, length(ss)) <> ss then s:=s+ss
+end;
 
 procedure includeTrailingString(var s: RawByteString; const ss: RawByteString);
 begin
@@ -97,10 +96,14 @@ begin
 end;
 
 function charToUnicode(c: WideChar):dword;
-begin stringToWideChar(c,@result,4) end;
+begin
+  stringToWideChar(c,@result,4)
+end;
 
 function charToUnicode(c: AnsiChar):dword;
-begin stringToWideChar(c,@result,4) end;
+begin
+  stringToWideChar(c,@result,4)
+end;
 
 function isLocalIP(const ip:string):boolean;
 var
@@ -122,7 +125,9 @@ result:=(r.a in [0,10,23,127])
 end; // isLocalIP
 
 function min(a,b:integer):integer;
-begin if a < b then result:=a else result:=b end;
+begin
+  if a < b then result:=a else result:=b
+end;
 
 
 
@@ -338,30 +343,15 @@ begin
     result := name+': '+intToStr(int)+CRLF;
 end;
 
-{
-function replyHeader_Str(const name:string; const str:string):string;
-begin
-result:='';
-if str > '' then result:=name+': '+str+CRLF;
-end;
-}
-function replyHeader_Str(const name:RawByteString; const str:RawByteString): RawByteString; OverLoad;
-begin
-result:='';
-if str > '' then result:=name+': '+str+CRLFA;
-end;
-
-function replyHeader_Str(const name:RawByteString; const str:String): RawByteString; OverLoad;
-begin
-result:='';
-if str > '' then result:=name+': '+ StrToUTF8(str)+CRLFA;
-end;
-
 function getNameOf(const s:string):string; // colon included
-begin result:=copy(s, 1, pos(':', s)) end;
+begin
+  result:=copy(s, 1, pos(':', s))
+end;
 
 function getNameOf(const s: RawByteString): RawByteString; // colon included
-begin result:=copy(s, 1, pos(RawByteString(':'), s)) end;
+begin
+  result:=copy(s, 1, pos(RawByteString(':'), s))
+end;
 
 // return 0 if not found
 function namePos(const name:string; const headers:string; from:integer=1):integer;

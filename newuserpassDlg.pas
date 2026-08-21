@@ -49,7 +49,7 @@ implementation
 {$R *.dfm}
 
 uses
-  parserLib, utillib;
+  scriptLib, utillib;
 
 procedure TnewuserpassFrm.okBtnClick(Sender: TObject);
 var

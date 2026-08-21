@@ -26,34 +26,20 @@ interface
 
 uses
   types, Windows,
- {$IFDEF FMX}
-  FMX.Forms,
-  FMX.Graphics, System.UITypes,
-  FMX.Menus,
-  FMX.Controls,
-  FMX.StdCtrls,
-  FMX.Dialogs,
-  FMX.TreeView,
- {$ELSE ~FMX}
   Graphics,
   Forms,
   dialogs, menus, stdctrls, controls,
   ComCtrls,
- {$ENDIF FMX}
   registry, classes, dateUtils,
  {$IFNDEF FPC}
   psAPI,
-  richedit,
+//  richedit,
  {$ENDIF ~FPC}
-  math, //iniFiles,
-  sysutils, strutils,
- {$IFDEF FMX}
-  longinputDlgFMX,
- {$ELSE ~FMX}
+  math, sysutils, strutils,
   longinputDlg,
- {$ENDIF FMX}
   hsUtils, srvClassesLib, fileLib, netUtils,
-  hfsGlobal, srvConst, serverLib;
+  //hfsGlobal,
+  srvConst, serverLib;
 
 type
   TnameExistsFun = function(const user: String): Boolean;
@@ -65,11 +51,7 @@ var
   winVersion: TWinVersion;
 
 procedure doNothing(); inline; // useful for readability
-{$IFDEF FMX}
-procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= TAlphaColorRec.Null; doSync: Boolean = false);
-{$ELSE ~FMX}
 procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = false);
-{$ENDIF FMX}
 function httpsCanWork(onlyCheck: Boolean = false): Boolean; OverLoad;
 function httpsCanWork(): Boolean; OverLoad;
 procedure fixFontFor(frm:Tform);
@@ -94,6 +76,7 @@ function holdingKey(key:integer):boolean;
 function blend(from,to_:Tcolor; perc:real):Tcolor;
 function isNT():boolean;
 function setClip(const s: String): Boolean;
+function getClipText: String;
 function eos(s:Tstream):boolean;
 function httpGetFileWithCheck(const url, filename: string; tryTimes: integer=1; notify: TProgressFunc =NIL): Boolean;
 function getPossibleAddresses(): TUnicodeStringDynArray;
@@ -103,13 +86,9 @@ function inputQueryLong(const caption, msg:string; var value:string; ofs:integer
 function exec(cmd: UnicodeString; pars: UnicodeString=''; showCmd:integer=SW_SHOW):boolean;
 function execNew(const cmd:string):boolean;
 function openURL(const url: string):boolean;
-function msgDlg(msg:string; code:integer=0; title:string=''):integer;
+function msgDlg(const msg: String; code:integer=0; title: String=''): Integer;
 // file
 function getDrive(fn:string):string;
-function getTempDir():string;
-function createShellLink(const linkFN: UnicodeString; const destFN: UnicodeString): Boolean;
-function existsShellLink(linkFN: WideString): Boolean;
-function readShellLink(linkFN: WideString): String;
 function getShellFolder(const id: String): String;
 function getTempFilename():string;
 function saveTempFile(const data: UnicodeString): String;
@@ -120,7 +99,7 @@ function sizeOfFile(fh:Thandle):int64; overload;
 function getFilename(var f: File): String;
 function filenameToDriveByte(fn:string):byte;
 function selectFile(var fn: UnicodeString; const title: UnicodeString=''; const filter: UnicodeString=''; options:TOpenOptions=[]): Boolean;
-function selectFiles(caption: UnicodeString; var files: TUnicodeStringDynArray): Boolean;
+function selectFiles(const caption: UnicodeString; var files: TUnicodeStringDynArray): Boolean;
 function selectFolder(const caption: UnicodeString; var folder: UnicodeString): Boolean;
 function selectFileOrFolder(caption: UnicodeString; var fileOrFolder: UnicodeString): Boolean;
 // registry
@@ -142,23 +121,13 @@ function optAnsi(bool: Boolean; const s: RawByteString): String;
 function utf8Test(const s: String): Boolean; OverLoad;
 function utf8Test(const s: RawByteString): boolean; OverLoad;
 function trim2(const s: String; chars: TcharsetW): String;
- {$IFDEF FMX}
-function promptForFileName(var fileName: String): boolean;
- {$ENDIF FMX}
+function IsSystemDarkTheme: Boolean;
 implementation
 
 uses
- {$IFDEF FMX}
-  Winapi.CommCtrl,
-  FMX.Clipboard,
-  FMX.Platform,
-  FMX.Types,
-  mainFmx, newuserpassDlgFMX,
- {$ELSE ~FMX}
   clipbrd, CommCtrl,
   RnQDialogs,
   main, newuserpassDlg,
- {$ENDIF FMX}
   shlobj, shellapi, activex, comobj,
 //  AnsiClasses,
  {$IFNDEF FPC}
@@ -169,9 +138,9 @@ uses
   {$IFDEF HAS_FASTMM}
   fastmm4,
   {$ENDIF HAS_FASTMM}
-  RDUtils, RDFileUtil, //RnQCrypt,
+  RDUtils, RDFileUtil,
   srvUtils, srvVars,
-  hfsVars, parserLib, scriptLib;
+  hfsVars, scriptLib;
 
 function NtfsFileHasReparsePoint(const Path: string): Boolean;
 var
@@ -288,7 +257,7 @@ data:=copy(s,9,Pinteger(@s[5])^);
 delete(s,1,8+length(data));
 end; // popTLV
 
-function msgDlg(msg:string; code:integer=0; title:string=''):integer;
+function msgDlg(const msg: String; code:integer=0; title: String=''): Integer;
 var
   parent: Thandle;
 begin
@@ -298,14 +267,12 @@ begin
   if code = 0 then
     code := MB_OK+MB_ICONINFORMATION;
 
-  {$IFNDEF FMX}
   if screen.ActiveCustomForm = NIL then
     parent := 0
    else
     parent := screen.ActiveCustomForm.handle;
   application.restore();
   application.BringToFront();
-  {$ENDIF FMX}
   title := application.Title+nonEmptyConcat(' -- ', title);
   result := messageBox(parent, pchar(msg), pchar(title), code)
 end; // msgDlg
@@ -529,14 +496,10 @@ end; // sizeOfFile
 function min(a,b:integer):integer; inline;
 begin if a>b then result:=b else result:=a end;
 
-function inputQueryLong(const caption, msg:string; var value:string; ofs:integer=0):boolean;
+function inputQueryLong(const caption, msg: String; var value: String; ofs: Integer=0):boolean;
 begin
   inputQueryLongdlg.Caption := caption;
-{$IFDEF FMX}
-  inputQueryLongdlg.msgLbl.Text
-{$ELSE ~FMX}
   inputQueryLongdlg.msgLbl.Caption
-{$ENDIF FMX}
      := '  '+xtpl(msg, [#13,#13'  '] );
   inputQueryLongdlg.inputBox.Text:=value;
   inputQueryLongdlg.inputBox.SelStart:=ofs;
@@ -619,14 +582,12 @@ var
   x1: integer;
 begin
   result := 0;
- {$IFNDEF FMX}
   x1 := statusbar.panels[0].width;
   while (x > x1) and (result < statusbar.Panels.Count-1) do
    begin
     inc(result);
     inc(x1, statusbar.panels[result].width);
    end;
- {$ENDIF FMX}
 end; // whatStatusPanel
 
 function getPossibleAddresses(): TUnicodeStringDynArray;
@@ -701,32 +662,6 @@ begin result:=selectWrapper(caption, folder) end;
 function selectFileOrFolder(caption: UnicodeString; var fileOrFolder: UnicodeString): Boolean;
 begin result:=selectWrapper(caption, fileOrFolder, BIF_BROWSEINCLUDEFILES) end;
 
-{$IFDEF FMX}
-function selectFile(var fn: String; const title, filter: String; options: TOpenOptions): Boolean;
-var
-  dlg: TopenDialog;
-begin
-  result:=FALSE;
-  dlg := TopenDialog.create(screen.activeForm);
-  if title > '' then dlg.Title:=title;
-  dlg.Filter:=filter;
-  if fn > '' then
-    begin
-      dlg.FileName:=fn;
-      if not isAbsolutePath(fn) then
-        dlg.InitialDir := exePath;
-    end;
-  try
-    dlg.Options := [TOpenOption.ofEnableSizing]+options;
-    if not dlg.Execute() then
-      exit;
-    fn := dlg.FileName;
-    result := TRUE;
-   finally
-    dlg.free
-  end;
-end; // selectFile
-{$ELSE ~FMX}
 function selectFile(var fn: UnicodeString; const title, filter: UnicodeString; options: TOpenOptions): boolean;
 const
   OpenOptions: array [TOpenOption] of DWORD = (
@@ -770,77 +705,32 @@ begin
       Flags := Flags or OpenOptions[Option];
   Result := OpenSaveFileDialog(hndl, '', filter, initDir, title, fn, True, false, flags)
 end; // selectFile
-{$ENDIF FMX}
 
 function getShellFolder(const id: String): String;
 begin
-result:=loadregistry(
-  'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders', id,
-  HKEY_CURRENT_USER);
+  result := loadregistry(
+    'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders', id,
+    HKEY_CURRENT_USER);
 end; // getShellFolder
 
-function createShellLink(const linkFN: UnicodeString; const destFN: UnicodeString): Boolean;
-var
-  ShellObject: IUnknown;
-begin
-  shellObject := CreateComObject(CLSID_ShellLink);
-  result := ((shellObject as IShellLinkW).setPath(PWideChar(destFN)) = NOERROR)
-    and ((shellObject as IPersistFile).Save(PWideChar(linkFN), False) = S_OK)
-end; // createShellLink
-
-function existsShellLink(linkFN: WideString): Boolean;
-var
-  ShellObject: IUnknown;
-begin
-  shellObject := CreateComObject(CLSID_ShellLink);
-  if (shellObject as IPersistFile).Load(PWChar(linkFN), 0) <> S_OK then
-    Exit(False);
-  Result := True;
-end; // existsShellLink
-
-function readShellLink(linkFN: WideString): String;
-var
-  ShellObject: IUnknown;
-  pfd: _WIN32_FIND_DATAW;
- {$IFNDEF UNICODE}
-  r: WideString;
- {$ENDIF UNICODE}
-begin
-  shellObject := CreateComObject(CLSID_ShellLink);
-  if (shellObject as IPersistFile).Load(PWChar(linkFN), 0) <> S_OK then
-    raise Exception.create('readShellLink: cannot load');
- {$IFNDEF UNICODE}
-  setLength(r, MAX_PATH);
-  if (shellObject as IShellLinkW).getPath(@r[1], length(result), @pfd, 0) <> NOERROR then
- {$ELSE UNICODE}
-  setLength(result, MAX_PATH);
-  if (shellObject as IShellLinkW).getPath(@result[1], length(result), pfd, 0) <> NOERROR then
- {$ENDIF UNICODE}
-    raise Exception.create('readShellLink: cannot getPath');
- {$IFNDEF UNICODE}
-  setLength(r, strLen(PWideChar(@r[1])));
-  result := r;
- {$ELSE UNICODE}
-  setLength(result, strLen(PChar(@result[1])));
- {$ENDIF UNICODE}
-end; // readShellLink
-
-function selectFiles(caption: UnicodeString; var files: TUnicodeStringDynArray): Boolean;
+function selectFiles(const caption: UnicodeString; var files: TUnicodeStringDynArray): Boolean;
 var
   dlg: TopenDialog;
   i: integer;
 begin
-dlg:=TopenDialog.create(screen.activeForm);
-try
-  dlg.Options:=dlg.Options+[TOpenOption.ofAllowMultiSelect, TOpenOption.ofFileMustExist, TOpenOption.ofPathMustExist];
-  result:=dlg.Execute();
-  if result then
+  dlg := TopenDialog.create(screen.activeForm);
+  try
+    dlg.Options := dlg.Options+[TOpenOption.ofAllowMultiSelect, TOpenOption.ofFileMustExist, TOpenOption.ofPathMustExist];
+    result := dlg.Execute();
+    if result then
     begin
-    setLength(files, dlg.Files.count);
-    for i:=0 to dlg.files.Count-1 do
-      files[i]:=dlg.files[i];
+      setLength(files, dlg.Files.count);
+      for i:=0 to dlg.files.Count-1 do
+        files[i]:=dlg.files[i];
     end;
-finally dlg.free end;
+   finally
+    dlg.free
+  end;
 end;
 
 function eos(s: TStream): Boolean;
@@ -852,20 +742,22 @@ function setClip(const s: String): Boolean;
 begin
   result := TRUE;
   try
-   {$IFDEF FMX}
-      begin
-        var
-          ClipService: IFMXExtendedClipboardService;
-        if TPlatformServices.Current.SupportsPlatformService(IFMXExtendedClipboardService, ClipService) then
-          clipService.SetText(s);
-      end;
-   {$ELSE ~FMX}
     clipboard().AsText := s
-   {$ENDIF FMX}
    except
     result:=FALSE
   end;
 end; // setClip
+
+function getClipText: String;
+begin
+  result := '';
+  try
+    Result := clipboard().AsText
+   except
+    result := ''
+  end;
+end; // setClip
+
 
 function isNT():boolean;
 var
@@ -878,11 +770,6 @@ begin
   result := vi.dwPlatformId = VER_PLATFORM_WIN32_NT;
 end; // isNT
 
-function getTempDir():string;
-begin
-setLength(result, 1000);
-setLength(result, getTempPath(length(result), @result[1]));
-end; // getTempDir
 {
 function optUTF8(bool:boolean; s: AnsiString): RawByteString;
 begin
@@ -917,13 +804,8 @@ var
   i: integer;
 begin
   result := 0;
- {$IFDEF FMX}
-  from := TColors.ColorToRGB(from);
-  to_ := TColors.ColorToRGB(to_);
- {$ELSE ~FMX}
   from := ColorToRGB(from);
   to_ := ColorToRGB(to_);
- {$ENDIF FMX}
   for i:=0 to 2 do
     inc(result, min($FF, round(((from shr (i*8)) and $FF)*(1-perc)
       +((to_ shr (i*8)) and $FF)*perc)) shl (i*8));
@@ -996,11 +878,7 @@ end;
 
 procedure drawCentered(cnv: Tcanvas; r: Trect; const text: String);
 begin
- {$IFDEF FMX}
-  cnv.FillText(r, text, false, 1, [], TTextAlign.Center);
- {$ELSE ~FMX}
   drawText(cnv.Handle, pchar(text), length(text), r, DT_CENTER+DT_NOPREFIX+DT_VCENTER+DT_END_ELLIPSIS)
- {$ENDIF FMX}
 end;
 
 function isLocalIP(const ip:string):boolean;
@@ -1023,11 +901,7 @@ begin result:=b; b:=FALSE end;
 procedure doNothing();
 begin end;
 
-{$IFDEF FMX}
-procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= TAlphaColorRec.Null; doSync: Boolean = false);
-{$ELSE ~FMX}
 procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = false);
-{$ENDIF FMX}
 begin
   if not doSync then
     mainFrm.add2log(lines, cd, clr)
@@ -1071,18 +945,10 @@ begin result:=accountIcon(a.enabled, a.group) end;
 
 function newMenuSeparator(lbl: string=''): Tmenuitem;
 begin
- {$IFDEF FMX}
-  result := Tmenuitem.Create(NIL);
-  Result.Text := '-';
-  result.hint := lbl;
-//  result.onDrawItem := mainfrm.menuDraw;
-//  result.OnMeasureItem := mainfrm.menuMeasure;
- {$ELSE ~FMX}
   result := newItem('-',0,FALSE,TRUE,NIL,0,'');
   result.hint := lbl;
   result.onDrawItem := mainfrm.menuDraw;
   result.OnMeasureItem := mainfrm.menuMeasure;
- {$ENDIF FMX}
 end; // newMenuSeparator
 
 function createAccountOnTheFly(): Paccount;
@@ -1165,30 +1031,10 @@ var
 begin
   nonClientMetrics.cbSize := sizeOf(nonClientMetrics);
   systemParametersInfo(SPI_GETNONCLIENTMETRICS, 0, @nonClientMetrics, 0);
- {$IFNDEF FMX}
   frm.font.handle := createFontIndirect(nonClientMetrics.lfMessageFont);
   if frm.scaled then
     frm.font.height:=nonClientMetrics.lfMessageFont.lfHeight;
- {$ENDIF FMX}
 end; // fixFontFor
-
- {$IFDEF FMX}
-function promptForFileName(var fileName: String): boolean;
-var
-  d: TOpenDialog;
-begin
-  d := TOpenDialog.Create(Application.MainForm);
-  d.Title := 'Select file';
-  d.FileName := fileName;
-  Result := d.Execute;
-  if Result then
-   begin
-     fileName := d.FileName;
-   end;
-  d.Free;
-//  Result := True;
-end;
- {$ENDIF FMX}
 
 
 function detectWinVersion: TWinVersion;
@@ -1209,6 +1055,31 @@ begin
   end;
 end;
 
+function IsSystemDarkTheme: Boolean;
+const
+  KEYPATH = '\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize';
+  KEYNAME = 'AppsUseLightTheme';
+var
+  Reg: TRegistry;
+  Light: Boolean;
+begin
+  Result := False;
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKeyReadOnly(KEYPATH) then
+    begin
+      if Reg.ValueExists(KEYNAME) then
+        Light := Reg.ReadBool(KEYNAME)
+      else
+        Light := True;
+      Result := not Light;
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
 INITIALIZATION
 //  sysutils.DecimalSeparator:='.'; // standardize
   sysutils.FormatSettings.DecimalSeparator := '.'; // standardize
@@ -1218,7 +1089,7 @@ INITIALIZATION
 // windows version detect
   winVersion := detectWinVersion;
 
-  trayMsg:='%ip%'
+  trayMsg := '%ip%'
   +trayNL+'Uptime: %uptime%'
   +trayNL+'Downloads: %downloads%';
 
@@ -1226,6 +1097,5 @@ INITIALIZATION
 
 FINALIZATION
   freeAndNIL(inputQueryLongdlg);
-  freeAndNIL(onlyDotsRE);
 
 end.

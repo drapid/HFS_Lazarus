@@ -26,18 +26,18 @@ interface
 
 uses
   // delphi libs
-  Windows, Messages, SysUtils, Forms, Menus, Graphics, Controls, ComCtrls, Dialogs, math,
+  Windows, Messages, SysUtils, Forms, Menus, Graphics, Controls, ComCtrls,
+  Dialogs, math,
   Buttons, StdCtrls, ExtCtrls, strutils, types,
   SyncObjs,
   Sciter, SciterApi,
-  //ToolWin,
-  iniFiles, Classes,
+  Classes,
   //AppEvnts, ImageList, Winapi.CommCtrl, System.Contnrs,
   // 3rd part libs. ensure you have all of these, the same version reported in dev-notes.txt
   rnqTraylib, hfs.tray,
   // rejetto libs
-  hfsGlobal, srvConst,
-  fileLib, serverLib, srvClassesLib,
+  hfsGlobal,
+  srvConst, fileLib, serverLib, srvClassesLib,
   IconsLib;
 
 
@@ -82,8 +82,8 @@ type
     topToolbar: TToolBar;
     startBtn: TToolButton;
     SepTB1: TToolButton;
-    Sep3TBtn: TToolButton;
     Sep2TBtn: TToolButton;
+    Sep3TBtn: TToolButton;
     menuBtn: TToolButton;
     menu: TPopupMenu;
     About1: TMenuItem;
@@ -424,6 +424,7 @@ type
     procedure filesBoxMouseEnter(Sender: TObject);
     procedure filesBoxMouseLeave(Sender: TObject);
     procedure filesBoxExit(Sender: TObject);
+    procedure logPnlResize(Sender: TObject);
     procedure newfolder1Click(Sender: TObject);
     procedure Remove1Click(Sender: TObject);
     procedure startBtnClick(Sender: TObject);
@@ -445,6 +446,7 @@ type
     procedure logmenuPopup(Sender: TObject);
     procedure Readonly1Click(Sender: TObject);
     procedure Clear1Click(Sender: TObject);
+    procedure SetLogTheme(isSystem, Dark: Boolean);
     procedure Copy1Click(Sender: TObject);
     procedure Saveas1Click(Sender: TObject);
     procedure Save1Click(Sender: TObject);
@@ -496,6 +498,8 @@ type
     procedure traymessage1Click(Sender: TObject);
     procedure Guide1Click(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure SafeFreeLogBrowser;
+    procedure MaybeInitLogBrowser;
     procedure Logfile1Click(Sender: TObject);
     procedure Font1Click(Sender: TObject);
     procedure Newlink1Click(Sender: TObject);
@@ -589,6 +593,7 @@ type
     procedure Edit1Click(Sender: TObject);
     procedure Restoredefault1Click(Sender: TObject);
     procedure Changefile1Click(Sender: TObject);
+    procedure ChangeNoMacrosfile1Click(Sender: TObject);
     procedure Changeeditor1Click(Sender: TObject);
     procedure expandBtnClick(Sender: TObject);
     procedure collapseBtnClick(Sender: TObject);
@@ -623,32 +628,35 @@ type
     procedure onShowPrefsChange(Sender: TObject);
     procedure onLogPrefsChange(Sender: TObject);
   private
-    FIsBrowserReady: Boolean;
     FLogLock: TCriticalSection;
     FLogArr: TLogDatas;
+    FIsBrowserReady: Boolean;
     LogBrowser: TSciter;
+    prevThemeDark: Boolean;
     function  searchLog(dir: Integer): Boolean;
-    procedure WMDropFiles(var msg:TWMDropFiles);
+    procedure WMDropFiles(var msg: TWMDropFiles);
       message WM_DROPFILES;
-    procedure WMQueryEndSession(var msg:TWMQueryEndSession);
+    procedure WMQueryEndSession(var msg: TWMQueryEndSession);
       message WM_QUERYENDSESSION;
-    procedure WMEndSession(var msg:TWMEndSession);
+    procedure WMEndSession(var msg: TWMEndSession);
       message WM_ENDSESSION;
-    procedure WMNCLButtonDown(var msg:TWMNCLButtonDown);
+    procedure WMNCLButtonDown(var msg: TWMNCLButtonDown);
       message WM_NCLBUTTONDOWN;
+    procedure WMSettingChange(var Message: TMessage); message WM_SETTINGCHANGE;
     procedure trayEvent(sender: Tobject; ev: TtrayEvent);
     procedure downloadtrayEvent(sender: Tobject; ev: TtrayEvent);
     function  pointedFile(strict: boolean=TRUE): Tfile;
     function  pointedConnection(point: TPoint): TconnData;
     procedure updateSbar();
-    function  selectedConnection():TconnData;
-    procedure ipmenuclick(sender:Tobject);
+    function  selectedConnection(): TconnData;
+    procedure setTheme(const pThemeName: String; pForce: Boolean = false);
+    procedure ipmenuclick(Sender: Tobject);
     procedure acceptOnMenuclick(sender: TObject);
-    procedure copyURLwithAddressMenuClick(sender: TObject);
-    procedure copyURLwithPasswordMenuClick(sender: TObject);
+    procedure copyURLwithAddressMenuClick(Sender: TObject);
+    procedure copyURLwithPasswordMenuClick(Sender: TObject);
     procedure updateTrayTip();
     procedure updateCopyBtn();
-//    procedure setTrayShows(s:string);
+//    procedure setTrayShows(s: String);
     procedure setTrayShows(s: TTrayShows);
     procedure addTray();
     procedure onRefreshConn(conn: TconnData);
@@ -661,9 +669,9 @@ type
     procedure addDropFiles(hnd: Thandle; under: TFileNode);
     procedure pasteFiles();
     function  addFilesFromString(files: String; under: TFileNode=NIL): Tfile;
-    procedure setGraphRate(v:integer);
+    procedure setGraphRate(v: Integer);
     procedure updateRecentFilesMenu();
-    procedure recentsClick(sender:Tobject);
+    procedure recentsClick(sender: TObject);
     procedure popupMainMenu();
     procedure updateAlwaysOnTop();
     procedure initVFS();
@@ -703,6 +711,7 @@ type
     procedure OnAfterAddFile(f: Tfile; parentNode, node: TTreeNode; skipComment: Boolean; addingStoped: Boolean);
     procedure add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
     procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor = Graphics.clDefault);
+    function  ipPointedInLog(): String;
     procedure saveVFS(fn: String='');
     function  finalInit(): boolean;
     procedure processParams_after(var params: TStringDynArray);
@@ -712,7 +721,7 @@ type
     function  SetSelectedFile(f: TFile): Boolean; OverLoad;
     function  SetSelectedFile(f: TFile; node: TFileNode): Boolean; OverLoad;
     function  copySelection(): TFileNodeDynArray;
-    procedure setLogToolbar(v:boolean);
+    procedure setLogToolbar(v: Boolean);
     function  getTrayTipMsg(const tpl: String=''): String;
    {$IFDEF FPC}
     procedure menuDraw(sender: TObject; cnv: Tcanvas; r:Trect; ds: TOwnerDrawState);
@@ -738,7 +747,6 @@ type
 var
   mainFrm: TmainFrm;
   customIPs: TUnicodeStringDynArray;   // user customized IP addresses
-  iconMasks: TstringIntPairs;
   trayMsg: string; // template for the tray hint
 //  customIPservice: string;
   trayNL: string = #13;
@@ -761,7 +769,6 @@ function  paramsAsArray(): TStringDynArray;
 procedure processParams_before(var params: TStringDynArray; const allowed: String='');
 function  loadCfg(var ini: String; Const tpl: String): Boolean;
 procedure setSpeedLimitIP(v: real);
-function  deleteAccount(const name: String): Boolean;
 function  createFingerprint(const fn: String; showProgress: Boolean = True): String;
 
 implementation
@@ -774,7 +781,6 @@ uses
    AnsiStrings,
   {$ENDIF UNICODE}
   //MMsystem,
-  System.UITypes,
   clipbrd, dateutils, shellapi,
  {$IFDEF FPC}
    //RegularExpressions,
@@ -787,19 +793,25 @@ uses
   Threading,
   Character,
  {$ENDIF FPC}
+  {$IFDEF USE_MORMOT}
+    mormot.core.json,
+    //mormot.core.text,
+   {$ELSE}
+    fpjson,
+  {$ENDIF USE_MORMOT}
   {$IFDEF UNICODE}
 //   AnsiClasses,
   {$ENDIF UNICODE}
   RDFileUtil, RDUtils, RDSysUtils,
-  RnQCrypt, RD.zip, RnQLangs, RnQDialogs,
+  RnQCrypt, RnQLangs, RnQDialogs,
+  HSUtils, HSLib,
+  srvUtils, srvVars, netUtils,
   monoLib,
   newuserpassDlg, optionsDlg, folderKindDlg, shellExtDlg, diffDlg, ipsEverDlg,
   purgeDlg, progFrmLib, filepropDlg, runscriptDlg,
-  HSUtils,
   langLib,
-//  parserLib,
-  srvUtils, srvVars, netUtils,
-  utilLib, scriptLib, hfsVars;
+  HFS.Macroses,
+  utilLib, hfsVars;
 
 resourcestring
   MSG_DDNS_NO_REPLY = 'no reply';
@@ -844,6 +856,9 @@ resourcestring
   MSG_KICK_ALL = 'There are %d connections open.'#13'Do you want to close them now?';
 resourcestring
   MSG_TPL_INCOMPATIBLE = 'The template you are trying to load is not compatible with current HFS version.'
+    +#13'HFS will now use default template.'
+    +#13'Ask on the forum if you need further help.';
+  MSG_TPL_HASMACROS = 'The template you are trying to load contain macroses. You should select template without macroses.'
     +#13'HFS will now use default template.'
     +#13'Ask on the forum if you need further help.';
 
@@ -1252,7 +1267,7 @@ begin
    TS_uploads: n := uploadsLogged;
    TS_hits: n := hitsLogged;
    TS_ips: n := fs.countIPs;
-   TS_ips_ever: n := ipsEverConnected.count;
+   TS_ips_ever: n := fs.ipsEverConnected.count;
    else
     n := 0;
   end;
@@ -1410,101 +1425,94 @@ begin
   banlist[l].ip := ip;
   banlist[l].comment := comm;
 
-  l := countConnectionsByIP(ip);
+  l := countConnectionsByIP(fs.htSrv, ip);
   if (l > 0) and (msgDlg(format(MSG_KICK_ADDR,[l]), MB_ICONQUESTION+MB_YESNO) = IDYES) then
     fs.kickByIP(ip);
   result := TRUE;
 end; // banAddress
 
-function shouldRecur(data: TconnData): boolean;
-begin
-  result := mainFrm.recursiveListingChk.checked
-        and data.allowRecur
-end; // shouldRecur
-
 function Tmainfrm.getLP: TLoadPrefs;
+  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TLoadPrefsVal; var sp: TLoadPrefs); Inline;
+  begin
+    if pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
+  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TLoadPrefsVal; var sp: TLoadPrefs); Inline;
+  begin
+    if not pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
 begin
   Result := [];
-  if supportDescriptionChk.checked then
-    Include(Result, lpION);
-  if listfileswithsystemattributeChk.checked then
-    Include(Result, lpSysAttr);
-  if listfileswithHiddenAttributeChk.checked then
-    Include(Result, lpHdnAttr);
-  if loadSingleCommentsChk.checked then
-    Include(Result, lpSnglCmnt);
-  if fingerprintsChk.checked  then
-    Include(Result, lpFingerPrints);
-  if recursiveListingChk.checked then
-    Include(Result, lpRecurListing);
+  includeChecked(supportDescriptionChk, lpION, Result);
+  includeChecked(listfileswithsystemattributeChk, lpSysAttr, Result);
+  includeChecked(listfileswithHiddenAttributeChk, lpHdnAttr, Result);
+  includeChecked(loadSingleCommentsChk, lpSnglCmnt, Result);
+  includeChecked(fingerprintsChk, lpFingerPrints, Result);
+//  includeChecked(recursiveListingChk, lpRecurListing, Result);
 
-  if hideProtectedItemsChk.Checked then
-    Include(Result, lpHideProt);
+  includeChecked(hideProtectedItemsChk, lpHideProt, Result);
 
-  if oemForIonChk.checked then
-    Include(Result, lpOEMForION);
-  if deletePartialUploadsChk.Checked then
-    Include(Result, lpDeletePartialUploads);
-  if NumberFilesOnUploadChk.Checked then
-    Include(Result, lpNumberFilesOnUpload);
-  if useCommentAsRealmChk.Checked then
-    Include(Result, lpUseCommentAsRealm);
+  includeChecked(oemForIonChk, lpOEMForION, Result);
+  includeChecked(deletePartialUploadsChk, lpDeletePartialUploads, Result);
+  includeChecked(NumberFilesOnUploadChk, lpNumberFilesOnUpload, Result);
+  includeChecked(useCommentAsRealmChk, lpUseCommentAsRealm, Result);
 end;
 
 function Tmainfrm.getSP: TShowPrefs;
+  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TShowPrefsVal; var sp: TShowPrefs); Inline;
+  begin
+    if pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
+  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TShowPrefsVal; var sp: TShowPrefs); Inline;
+  begin
+    if not pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
 begin
   Result := [];
 
-  if useSystemIconsChk.checked then
-    Include(Result, spUseSysIcons);
+  includeChecked(useSystemIconsChk, spUseSysIcons, Result);
   if True then
     Include(Result, spNoWaitSysIcons);
-  if httpsUrlsChk.checked then
-    Include(Result, spHttpsUrls);
-  if foldersBeforeChk.checked then
-    Include(Result, spFoldersBefore);
-  if linksBeforeChk.checked then
-    Include(Result, spLinksBefore);
+  includeChecked(httpsUrlsChk, spHttpsUrls, Result);
+  includeChecked(foldersBeforeChk, spFoldersBefore, Result);
+  includeChecked(linksBeforeChk, spLinksBefore, Result);
 
-  if noPortInUrlChk.checked then
-    Include(Result, spNoPortInUrl);
-  if encodenonasciiChk.checked then
-    Include(Result, spEncodeNonascii);
-  if encodeSpacesChk.checked then
-    Include(Result, spEncodeSpaces);
-  if compressedbrowsingChk.checked then
-    Include(Result, spCompressed);
-  if sendHFSidentifierChk.Checked then
-    Include(Result, spSendHFSIdentifier);
-  if freeLoginChk.Checked then
-    Include(Result, spFreeLogin);
-  if stopSpidersChk.Checked then
-    Include(Result, spStopSpiders);
-  if preventLeechingChk.Checked then
-    Include(Result, spPreventLeeching);
-  if pwdInPagesChk.Checked then
-    Include(Result, spPwdInPages);
-  if enableNoDefaultChk.Checked then
-    Include(Result, spEnableNoDefault);
-  if DMbrowserTplChk.Checked then
-    Include(Result, spDMbrowserTpl);
-  if not enableMacrosChk.Checked then
-    Include(Result, spDisableMacros);
-  if disableMacrosNonLocalIPChk.Checked then
-    Include(Result, spNonLocalIPDisableMacros);
+  includeChecked(noPortInUrlChk, spNoPortInUrl, Result);
+  includeChecked(encodenonasciiChk, spEncodeNonascii, Result);
+  includeChecked(encodeSpacesChk, spEncodeSpaces, Result);
+  includeChecked(compressedbrowsingChk, spCompressed, Result);
+  includeChecked(CompressZIPstreamsChk, spCompressedZip, Result);
+  includeChecked(sendHFSidentifierChk, spSendHFSIdentifier, Result);
+  includeChecked(freeLoginChk, spFreeLogin, Result);
+  includeChecked(stopSpidersChk, spStopSpiders, Result);
+  includeChecked(preventLeechingChk, spPreventLeeching, Result);
+  includeChecked(pwdInPagesChk, spPwdInPages, Result);
+  includeChecked(enableNoDefaultChk, spEnableNoDefault, Result);
+  includeChecked(DMbrowserTplChk, spDMbrowserTpl, Result);
+  includeChecked(enableMacrosChk, spEnableMacros, Result);
+  includeChecked(disableMacrosNonLocalIPChk, spNonLocalIPDisableMacros, Result);
 
 
-  if recursiveListingChk.Checked then
-    Include(Result, spRecursiveListing);
-  if oemTarChk.Checked then
-    Include(Result, spOemTar);
-  if noContentdispositionChk.Checked then
-    Include(Result, spNoContentDisposition);
-  if preventStandbyChk.Checked then
-    Include(Result, spPreventStandby);
+  includeChecked(recursiveListingChk, spRecursiveListing, Result);
+  includeChecked(oemTarChk, spOemTar, Result);
+  includeChecked(noContentdispositionChk, spNoContentDisposition, Result);
+  includeChecked(preventStandbyChk, spPreventStandby, Result);
 end;
 
 function Tmainfrm.getLogP: TLogPrefs;
+  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TLogPrefsVal; var sp: TLogPrefs); Inline;
+  begin
+    if pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
+  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TLogPrefsVal; var sp: TLogPrefs); Inline;
+  begin
+    if not pCheckBox.Checked then
+      Include(sp, pToInclude);
+  end;
 begin
   Result := [];
   if logBannedChk.Checked then
@@ -1601,7 +1609,7 @@ end;
 procedure setupDownloadIcon(data: TconnData);
 var
   tr: TmyTrayicon;
-  ti: TIcon;
+//  ti: TIcon;
   procedure painticon();
   var
     p: TIconParams;
@@ -1624,7 +1632,7 @@ begin
   if (data = NIL) or (data.conn = NIL) then
     exit;
   tr := data.getTray;
-  ti := data.getIcon;
+//  ti := data.getIcon;
 
   if assigned(tr)
    and data.isReplyFinished then
@@ -1632,7 +1640,7 @@ begin
     data.clearGuiData;
     tr.hide();
     freeAndNIL(tr);
-    ti.free;
+//    ti.free;
     exit;
   end;
   if not data.isSendingFile then
@@ -1645,7 +1653,7 @@ begin
     begin
       data.initGUIData(mainfrm.handle, mainfrm.downloadTrayEvent);
       tr := data.getTray;
-      ti := data.getIcon;
+//      ti := data.getIcon;
     end;
   if mainfrm.trayfordownloadChk.checked and data.isSendingFile then
     paintIcon()
@@ -1685,24 +1693,6 @@ begin
   if utTIP in what then
     mainFrm.updateTrayTip();
 end;
-
-function getDynLogFilename(cd: TconnDataMain): String; overload;
-var
-  d, m, y, w: word;
-  u: string;
-begin
-decodeDateFully(now(), y,m,d,w);
-if cd = NIL then u:=''
-else u:=nonEmptyConcat('(', cd.usr, ')');
-result:=xtpl(logFile.filename, [
-  '%d%', int0(d,2),
-  '%m%', int0(m,2),
-  '%y%', int0(y,4),
-  '%dow%', int0(w-1,2),
-  '%w%', int0(weekOf(now()),2),
-  '%user%', u
-]);
-end; // getDynLogFilename
 
 {$IFDEF FPC}
 function GetLocaleStr(LID, LT: Longint; const Def: string): AnsiString;
@@ -1959,15 +1949,43 @@ begin
 end; // add2logInt
 
 function JsonQuote(const S: string): string;
+var
+  i: Integer;
+  ch: Char;
 begin
-  Result := '"' + StringReplace(StringReplace(S, '\', '\\', [rfReplaceAll]),
-                                '"', '\"', [rfReplaceAll]) + '"';
+  Result := '"';
+  for i := 1 to Length(S) do
+  begin
+    ch := S[i];
+    case ch of
+      '\': Result := Result + '\\';
+      '"': Result := Result + '\"';
+      #8:  Result := Result + '\b';
+      #9:  Result := Result + '\t';
+      #10: Result := Result + '\n';  // LF
+      #12: Result := Result + '\f';
+      #13: Result := Result + '\r';  // CR
+    else
+      if Ord(ch) < 32 then
+        Result := Result + '\u' + IntToHex(Ord(ch), 4)
+      else
+        Result := Result + ch;
+    end;
+  end;
+  Result := Result + '"';
 end;
 
 procedure Tmainfrm.Add2LogInt2(const ev: TLogData);
 var
-  Json: string;
-  lines, first, rest: String;
+  //Json: string;
+  lines, first, rest, colorStr: String;
+{$IFDEF USE_MORMOT}
+ ResJS: RawByteString;
+ j: TJsonWriter;
+ Json: RawByteString;
+{$ELSE ~USE_MORMOT}
+ ResJ: TJSONObject;
+{$ENDIF USE_MORMOT}
 begin
   lines := ev.lines;
   first := chopLine(lines);
@@ -1976,14 +1994,32 @@ begin
    else
     rest := reReplace(lines, '^', '> ')+CRLF;
 
-  Json := Format(
-    '{"ts":%s,"addr":%s,"msg":%s,"cont":%s,"color":%s}',
-    [JsonQuote(TimeToStr(Ev.time)),
-     JsonQuote(Ev.addr),
+  if (ev.clr = Graphics.clDefault) or (ev.clr = clWindowText) then
+      colorStr := ''
+    else
+      colorStr := Format('#%6.6x', [ColorToRGB(ev.clr) and $FFFFFF]);
+
+  // Важно: передаём и красивый addr, и чистый ip
+(*  Json := Format(
+    '{"ts":%s,"addr":%s,"ip":%s,"msg":%s,"cont":%s,"color":%s}',
+    [JsonQuote(TimeToStr(ev.time)),
+     JsonQuote(ev.addr),
+     JsonQuote(ev.address),          // < чистое поле address из TLogData
      JsonQuote(first),
      JsonQuote(rest),
-     JsonQuote(Format(' style="color:#%6.6x"', [ColorToRGB(ev.clr) and $FFFFFF]))]
+     JsonQuote(colorStr)]
   );
+  *)
+  j := TJsonWriter.CreateOwnedStream();
+  j.AddJsonEscape(['ts', TimeToStr(ev.time),
+       'addr', ev.addr,
+       'ip', ev.address,
+       'msg', first,
+       'cont', rest,
+       'color', colorStr
+       ]);
+  json := j.text;
+  j.Free;
 
   LogBrowser.Call('addLogEvent', [Json]);
 end;
@@ -2024,10 +2060,10 @@ end; // sayPortBusy
 procedure toggleServer(fs: TFileServer);
 begin
   if fs.httpServIsActive then
-    stopServer()
+    stopServer(fs.htSrv)
    else
-    if not startServer() then
-      sayPortBusy(srv.port);
+    if not startServer(fs.htSrv) then
+      sayPortBusy(fs.htSrv.port);
   if (fs.getConnectionsCount = 0) or fs.httpServIsActive then
     exit;
   if msgDLg(format(MSG_KICK_ALL,[fs.getConnectionsCount]), MB_ICONQUESTION+MB_YESNO) = IDYES then
@@ -2036,7 +2072,7 @@ end; // toggleServer
 
 procedure updatePortBtn(fs: TFileServer);
 begin
-  if assigned(fs) then
+  if Assigned(fs) then
     mainfrm.portBtn.Caption := format(S_PORT_LABEL, [first(fs.getListenPorts(), S_PORT_ANY)]);
 end; // updatePortBtn
 
@@ -2061,41 +2097,107 @@ begin
    end;
   tplIsCustomized := fs.tpl.fullTextS > '';
   if boolOnce(tplImport) then
-    runTplImport(fs);
+    fs.runTplImport;
 end; // setTplText
+
+// returns true if template was patched
+function setNMTplText(fs: TFileServer; const text: UnicodeString=''): Boolean;
+var
+  sec: PtplSection;
+  newTPL: Ttpl;
+begin
+  result := FALSE;
+  newTPL := NIL;
+  if text = '' then
+    begin
+      newTPL := Ttpl.createResource('noMacrosTpl');
+      tplNoMacrosFN := '';
+      TFileServer.nmTPL := newTPL;
+      Result := False;
+      newTPL := NIL;
+    end
+   else
+    begin
+      newTPL := Ttpl.create(text);
+      sec := newTPL.getSection('api level', FALSE);
+      if (text>'')
+        and ((sec=NIL) or (strToIntDef(Trim(sec.txt), 0) < 2)) then
+       begin
+    //    fs.tpl.fullText := '';
+        tplNoMacrosFN := '';
+    //    tplImport := FALSE;
+        msgDlg(MSG_TPL_INCOMPATIBLE, MB_ICONERROR);
+       end;
+      if newTPL.anyMacroMarkerIn then
+        begin
+          tplNoMacrosFN := '';
+          msgDlg(MSG_TPL_HASMACROS, MB_ICONERROR);
+        end;
+      if tplNoMacrosFN > '' then
+        begin
+          TFileServer.nmTPL := newTPL;
+          Result := True;
+          newTPL := NIL;
+        end;
+    end;
+  if newTPL <> NIL then
+    newTPL.Free;
+end; // setNMTplText
 
 procedure keepTplUpdated(fs: TFileServer);
 var
   tplData: RawByteString;
   tplText: UnicodeString;
 begin
-if fileExists(tplFilename) then
-  begin
-  if newMtime(tplFilename, tplLast) then
+  if fileExists(tplFilename) then
     begin
-      tplData := loadFile(tplFilename);
-      tplText := UnUTF(tplData);
-      if setTplText(fs, tplText) then
-        saveFile2(tplFilename, fs.tpl.fullText);
+      if newMtime(tplFilename, tplLast) then
+        begin
+          tplData := loadFile(tplFilename);
+          tplText := UnUTF(tplData);
+          if setTplText(fs, tplText) then
+            saveFile2(tplFilename, fs.tpl.fullText);
+        end;
+    end
+   else if tplLast <> 0 then
+    begin
+      tplLast:=0; // we have no modified-time in this case, but this will stop the refresh
+      setTplText(fs);
     end;
-  end
-else if tplLast <> 0 then
-  begin
-  tplLast:=0; // we have no modified-time in this case, but this will stop the refresh
-  setTplText(fs);
-  end;
+  if fileExists(tplNoMacrosFN) then
+    begin
+      if newMtime(tplNoMacrosFN, tplNMLast) then
+        begin
+          tplData := loadFile(tplNoMacrosFN);
+          tplText := UnUTF(tplData);
+          if setNMTplText(fs, tplText) then
+            saveFile2(tplNoMacrosFN, fs.nmTPL.fullText);
+        end;
+    end
+   else if tplNMLast <> 0 then
+    begin
+      tplNMLast:=0; // we have no modified-time in this case, but this will stop the refresh
+      setNMTplText(fs);
+    end;
 end; // keepTplUpdated
 
-procedure setNewTplFile(const fn:string);
+procedure setNewTplFile(const fn: UnicodeString);
 begin
   tplFilename := fn;
   tplImport := TRUE;
   tplLast := 0;
 end; // setNewTplFile
 
-procedure findSimilarIP(fromIP:string);
+procedure setNewNMTplFile(const fn: UnicodeString);
+begin
+  tplNoMacrosFN := fn;
+//  tplImport := TRUE;
+  tplNMLast := 0;
+end; // setNewNMTplFile
 
-  function howManySameChars(ip1,ip2:string):integer;
+procedure findSimilarIP(const fromIP: String);
+
+  function howManySameChars(const ip1, ip2: String): Integer;
   var
     i,n: integer;
   begin
@@ -2111,23 +2213,24 @@ var
   i: integer;
   a: TStringDynArray;
 begin
-if fromIP = '' then exit;
-if stringExists(fromIP, customIPs) then
-  begin
-  setDefaultIP(fromIP);
-  exit;
-  end;
-chosen:=getIP();
-//a:=getIPs();
-a:=getAcceptOptions();
-for i:=0 to length(a)-1 do
-  if howManySameChars(chosen, fromIP) < howManySameChars(a[i], fromIP) then
-    chosen:=a[i];
-setDefaultIP(chosen);
+  if fromIP = '' then
+    exit;
+  if stringExists(fromIP, customIPs) then
+    begin
+      setDefaultIP(fromIP);
+      exit;
+    end;
+  chosen := getIP();
+  //a:=getIPs();
+  a := getAcceptOptions();
+  for i:=0 to length(a)-1 do
+    if howManySameChars(chosen, fromIP) < howManySameChars(a[i], fromIP) then
+      chosen := a[i];
+  setDefaultIP(chosen);
 end; // findSimilarIP
 
-procedure setLimitOption(var variable:integer; newValue:integer;
-  menuItem:TmenuItem; menuLabel:string);
+procedure setLimitOption(var variable: Integer; newValue: Integer;
+  menuItem: TmenuItem; const menuLabel: String);
 begin
   if newValue < 0 then
     newValue:=0;
@@ -2137,13 +2240,13 @@ begin
 end; // setLimitOption
 
 procedure setMaxIPs(v:integer);
-begin setLimitOption(maxIPs,v, mainfrm.maxIPs1, MSG_MAX_SIM_ADDR) end;
+begin setLimitOption(maxIPs, v, mainfrm.maxIPs1, MSG_MAX_SIM_ADDR) end;
 
 procedure setMaxIPsDLing(v:integer);
-begin setLimitOption(maxIPsDLing,v, mainfrm.maxIPsDLing1, MSG_MAX_SIM_ADDR_DL) end;
+begin setLimitOption(maxIPsDLing, v, mainfrm.maxIPsDLing1, MSG_MAX_SIM_ADDR_DL) end;
 
 procedure setMaxConnections(v:integer);
-begin setLimitOption(maxConnections,v, mainfrm.maxConnections1, MSG_MAX_CON) end;
+begin setLimitOption(maxConnections, v, mainfrm.maxConnections1, MSG_MAX_CON) end;
 
 procedure setMaxConnectionsIP(v:integer);
 begin setLimitOption(maxConnectionsIP, v, mainfrm.MaxconnectionsfromSingleaddress1, MSG_MAX_CON_SING) end;
@@ -2154,7 +2257,7 @@ begin setLimitOption(maxContempDLs, v, mainfrm.maxDLs1, MSG_MAX_SIM_DL) end;
 procedure setMaxDLsIP(v:integer);
 begin setLimitOption(maxContempDLsIP, v, mainfrm.maxDLsIP1, MSG_MAX_SIM_DL_SING) end;
 
-procedure setAutoFingerprint(v:integer);
+procedure setAutoFingerprint(v: Integer);
 begin
   autoFingerprint := v;
   mainfrm.Createfingerprintonaddition1.caption := format(if_(v=0, NO_FINGERPRINT, FINGERPRINT), [v]);
@@ -2192,7 +2295,7 @@ begin
     mainfrm.saveVFS(lastFileOpen)
 end;
 
-function checkVfsOnQuit():boolean;
+function checkVfsOnQuit(): Boolean;
 var
   s: string;
 begin
@@ -2218,9 +2321,16 @@ begin
     end;
 end; // checkVfsOnQuit
 
-procedure inputComment(f:Tfile);
+procedure inputComment(f: Tfile);
+var
+  sc: String;
 begin
-  VFSmodified := inputqueryLong('Comment', format(MSG_INP_COMMENT, [f.name]), f.comment);
+  sc := f.comment;
+  if inputQueryLong('Comment', format(MSG_INP_COMMENT, [f.name]), sc) then
+    begin
+      VFSmodified := True;
+      f.comment := sc;
+    end;
 end; // inputComment
 
 function Tmainfrm.addFile(f: Tfile; parent: TFileNode=NIL; skipComment: boolean=FALSE): Tfile;
@@ -2487,7 +2597,7 @@ begin
   if filesBox.SelectionCount = 0 then
     selectedFile := NIL
    else
-    selectedFile := filesBox.selections[0].data;
+    selectedFile := TFile(fileSrv.nodeToFile(filesBox.selections[0]));
   updateUrlBox()
 end;
 
@@ -2509,9 +2619,10 @@ procedure TmainFrm.Kickconnection1Click(Sender: TObject);
 var
   cd: TconnData;
 begin
-cd:=selectedConnection();
-if cd = NIL then exit;
-cd.disconnect('kicked');
+  cd:=selectedConnection();
+  if cd = NIL then
+    exit;
+  cd.disconnect('kicked');
 end;
 
 procedure TmainFrm.Kickallconnections1Click(Sender: TObject);
@@ -2519,7 +2630,7 @@ begin fileSrv.kickByIP('*') end;
 
 procedure TmainFrm.KickIPaddress1Click(Sender: TObject);
 var
-  cd: TconnData;
+  cd: TconnDataMain;
 begin
   cd:=selectedConnection();
   if cd = NIL then
@@ -2552,10 +2663,10 @@ begin
     with ip2obj.Objects[i] as TperIp do
       if not customizedLimiter then
         limiter.maxSpeed := vi;
-  updateMenuSpeed(mainfrm.Speedlimitforsingleaddress1, MSG_SPD_LIMIT_SING, v);
+  updateMenuSpeed(mainfrm.SpeedLimitForSingleAddress1, MSG_SPD_LIMIT_SING, v);
 end; // setSpeedLimitIP
 
-procedure setSpeedLimit(v:real);
+procedure setSpeedLimit(v: Real);
 begin
   speedLimit := v;
   if v < 0 then
@@ -2565,7 +2676,7 @@ begin
   updateMenuSpeed(mainfrm.speedLimit1, MSG_SPD_LIMIT, v);
 end; // setSpeedLimit
 
-procedure autosaveClick(var rec:Tautosave; name:string);
+procedure autosaveClick(var rec: Tautosave; name: String);
 var
   s: string;
   v: integer;
@@ -2594,67 +2705,6 @@ else s:=intToStr(rec.every);
 end; // autosaveClick
 
 function TmainFrm.getCfg(exclude: String=''; skipTotals: Boolean = false): String;
-type
-  Tencoding=(E_PLAIN, E_B64, E_ZIP);
-
-  function encodeW(const s: string; encoding: Tencoding): String;
-  begin
-  case encoding of
-    E_PLAIN: result := s;
-    E_B64: result := b64utf8W(s);
-    E_ZIP:
-      begin
-      result := b64U(zCompressStr(StrToUTF8(s)));
-//      if length(result) > round(0.95*length(s)) then result:=s;
-//      result := Base64EncodeString(result);
-      end;
-    end;
-  end;
-
-  function encodeA(const s: RawByteString; encoding: Tencoding): RawByteString;
-  begin
-  case encoding of
-    E_PLAIN: result:=s;
-    E_B64: result:=B64R(s);
-    E_ZIP:
-      begin
-      result := zCompressStr(s);
-      if length(result) > round(0.95*length(s)) then result:=s;
-      result := B64R(result);
-      end;
-    end;
-  end;
-
-  function accountsToStr(): String;
-  var
-    i: integer;
-    a: Paccount;
-
-    function prop(name, value:string; encoding:Tencoding=E_PLAIN):string;
-    begin
-      if value > '' then
-        result:='|'+name+':'+encodeW(value, encoding)
-       else
-        Result := '';
-    end;
-
-  begin
-  result:='';
-  if Length(accounts) > 0 then
-  for i:=0 to length(accounts)-1 do
-  	begin
-    a:=@accounts[i];
-    result:=result
-      +prop('login', a.user+':'+a.pwd, E_B64)
-      +prop('enabled', yesno[a.enabled])
-      +prop('group', yesno[a.group])
-      +prop('no-limits', yesno[a.noLimits])
-      +prop('redir', a.redir)
-      +prop('link', join(':',a.link))
-      +prop('notes', a.notes, E_ZIP)
-      +';';
-    end;
-  end; // accountsToStr
 
   function banlistToStr(): String;
   var
@@ -2679,33 +2729,28 @@ type
 var
   iconMasksStr, userIconMasks: String;
 
-  function iconMasksToStr(): String;
-  var
-    i, j: integer;
-  begin
-  result:='';
-  for i:=0 to length(iconMasks)-1 do
-    begin
-    j:=idx_img2ico(iconMasks[i].int);
-    if j >= USER_ICON_MASKS_OFS then
-      userIconMasks:=userIconMasks+format('%d:%s|', [j, encodeA(pic2str(j, 16), E_ZIP)]);
-    result:=result+format('%s|%d||', [iconMasks[i].str, j]);
-    end;
-  end; // iconMasksToStr
-
   function fontToStr(f:Tfont):string;
   begin
-  result:=if_(fsBold in f.Style, 'B')+if_(fsItalic in f.Style, 'I')
-    +if_(fsUnderline in f.Style, 'U')+if_(fsStrikeOut in f.Style, 'S');
-  result:=format('%s|%d|%s|%s', [f.Name,f.size,colorToString(f.Color),result]);
+    result := if_(fsBold in f.Style, 'B')+if_(fsItalic in f.Style, 'I')
+      +if_(fsUnderline in f.Style, 'U')+if_(fsStrikeOut in f.Style, 'S');
+    result := format('%s|%d|%s|%s', [f.Name,f.size,colorToString(f.Color),result]);
   end; // fontToStr
 
+  function yesnoCheck(cb: TCheckBox): String; OverLoad;
+  begin
+    Result := yesno[cb.Checked];
+  end;
+  function yesnoCheck(cb: TMenuItem): String; OverLoad;
+  begin
+    Result := yesno[cb.Checked];
+  end;
 begin
   userIconMasks := '';
-  iconMasksStr := iconMasksToStr();
+//  iconMasksStr := iconMasksToStr();
+  iconMasksStr := iconMasks.toStr(userIconMasks);
   Result := 'HFS '+ srvConst.VERSION+' - Build #'+VERSION_BUILD+CRLF
 +'active='+yesno[fileSrv.httpServIsActive]+CRLF
-+'only-1-instance='+yesno[only1instanceChk.checked]+CRLF
++'only-1-instance='+ yesnoCheck(only1instanceChk)+CRLF
 +'window='+rectToStr(lastWindowRect)+CRLF
 +'window-max='+yesno[windowState = wsMaximized]+CRLF
 +'easy='+yesno[easyMode]+CRLF
@@ -2715,10 +2760,10 @@ begin
 +'log-file-name='+logFile.filename+CRLF
 +'log-font-name='+logFontName+CRLF
 +'log-font-size='+intToStr(logFontSize)+CRLF
-+'log-date='+yesno[LogdateChk.checked]+CRLF
-+'log-time='+yesno[LogtimeChk.checked]+CRLF
-+'log-to-screen='+yesno[logOnVideoChk.checked]+CRLF
-+'log-only-served='+yesno[logOnlyServedChk.checked]+CRLF
++'log-date='+yesnoCheck(LogdateChk)+CRLF
++'log-time='+ yesnoCheck(LogtimeChk)+CRLF
++'log-to-screen='+ yesnoCheck(logOnVideoChk)+CRLF
++'log-only-served='+yesnoCheck(logOnlyServedChk)+CRLF
 +'log-server-start='+yesno[logServerstartChk.checked]+CRLF
 +'log-server-stop='+yesno[logServerstopChk.checked]+CRLF
 +'log-connections='+yesno[logConnectionsChk.checked]+CRLF
@@ -2738,60 +2783,61 @@ begin
 +'log-others='+yesno[logOtherEventsChk.checked]+CRLF
 +'port='+port+CRLF
 +'listen-on='+listenOn+CRLF
-+'log-file-tabbed='+yesno[tabOnLogFileChk.checked]+CRLF
++'log-file-tabbed='+ yesnoCheck(tabOnLogFileChk)+CRLF
 +'log-apache-format='+logfile.apacheFormat+CRLF
 +'tpl-file='+tplFilename+CRLF
 +'tpl-editor='+tplEditor+CRLF
-+'delete-dont-ask='+yesno[deleteDontAskChk.checked]+CRLF
-+'free-login='+yesno[freeLoginChk.checked]+CRLF
-+'confirm-exit='+yesno[confirmexitChk.checked]+CRLF
-+'keep-bak-updating='+yesno[keepBakUpdatingChk.checked]+CRLF
-+'include-pwd-in-pages='+yesno[pwdInPagesChk.Checked]+CRLF
++'tpl-no-macros-file='+tplNoMacrosFN+CRLF
++'delete-dont-ask='+ yesnoCheck(deleteDontAskChk)+CRLF
++'free-login='+ yesnoCheck(freeLoginChk)+CRLF
++'confirm-exit='+ yesnoCheck(confirmexitChk)+CRLF
++'keep-bak-updating='+ yesnoCheck(keepBakUpdatingChk)+CRLF
++'include-pwd-in-pages='+ yesnoCheck(pwdInPagesChk)+CRLF
 +'ip='+defaultIP+CRLF
 +'custom-ip='+join(';',customIPs)+CRLF
 +'external-ip-server='+customIPservice+CRLF
 +'dynamic-dns-updater='+b64utf8W(dyndns.url)+CRLF
 +'dynamic-dns-user='+dyndns.user+CRLF
 +'dynamic-dns-host='+dyndns.host+CRLF
-+'search-better-ip='+yesno[searchbetteripChk.checked]+CRLF
-+'start-minimized='+yesno[startMinimizedChk.checked]+CRLF
-+'connections-height='+intToStr(lastGoodConnHeight)+CRLF
++'search-better-ip='+ yesnoCheck(searchbetteripChk)+CRLF
++'start-minimized='+ yesnoCheck(startMinimizedChk)+CRLF
++'connections-height='+ intToStr(lastGoodConnHeight)+CRLF
 +'files-stay-flagged-for-minutes='+intToStr(filesStayFlaggedForMinutes)+CRLF
-+'auto-save-vfs='+yesno[autosaveVFSchk.checked]+CRLF
-+'folders-before='+yesno[foldersbeforeChk.checked]+CRLF
-+'links-before='+yesno[linksBeforeChk.checked]+CRLF
-+'use-comment-as-realm='+yesno[usecommentasrealmChk.checked]+CRLF
-+'getright-template='+yesno[DMbrowserTplChk.checked]+CRLF
-+'auto-save-options='+yesno[autosaveoptionsChk.checked]+CRLF
-+'dont-include-port-in-url='+yesno[noPortInUrlChk.checked]+CRLF
-+'persistent-connections='+yesno[persistentconnectionsChk.checked]+CRLF
-+'modal-options='+yesno[modalOptionsChk.checked]+CRLF
-+'beep-on-flash='+yesno[beepChk.checked]+CRLF
-+'prevent-leeching='+yesno[preventLeechingChk.checked]+CRLF
-+'delete-partial-uploads='+yesno[deletePartialUploadsChk.checked]+CRLF
++'auto-save-vfs='+ yesnoCheck(autosaveVFSchk)+CRLF
++'folders-before='+ yesnoCheck(foldersbeforeChk)+CRLF
++'links-before='+ yesnoCheck(linksBeforeChk)+CRLF
++'use-comment-as-realm='+ yesnoCheck(usecommentasrealmChk)+CRLF
++'getright-template='+ yesnoCheck(DMbrowserTplChk)+CRLF
++'auto-save-options='+ yesnoCheck(autosaveoptionsChk)+CRLF
++'dont-include-port-in-url='+ yesnoCheck(noPortInUrlChk)+CRLF
++'persistent-connections='+ yesnoCheck(persistentconnectionsChk)+CRLF
++'modal-options='+ yesnoCheck(modalOptionsChk)+CRLF
++'beep-on-flash='+ yesnoCheck(beepChk)+CRLF
++'prevent-leeching='+ yesnoCheck(preventLeechingChk)+CRLF
++'delete-partial-uploads='+ yesnoCheck(deletePartialUploadsChk)+CRLF
 +'rename-partial-uploads='+renamePartialUploads+CRLF
-+'enable-macros='+yesno[enableMacrosChk.checked]+CRLF
-+'use-system-icons='+yesno[usesystemiconsChk.checked]+CRLF
-+'minimize-to-tray='+yesno[MinimizetotrayChk.checked]+CRLF
-+'tray-icon-for-each-download='+yesno[trayfordownloadChk.checked]+CRLF
-+'show-main-tray-icon='+yesno[showmaintrayiconChk.checked]+CRLF
-+'always-on-top='+yesno[alwaysontopChk.checked]+CRLF
-+'quit-dont-ask='+yesno[quitWithoutAskingToSaveChk.checked]+CRLF
-+'support-descript.ion='+yesno[supportDescriptionChk.checked]+CRLF
-+'oem-descript.ion='+yesno[oemForIonChk.checked]+CRLF
-+'oem-tar='+yesno[oemTarChk.checked]+CRLF
-+'enable-fingerprints='+yesno[fingerprintsChk.checked]+CRLF
-+'save-fingerprints='+yesno[saveNewFingerprintsChk.checked]+CRLF
++'enable-macros='+ yesnoCheck(enableMacrosChk)+CRLF
++'use-system-icons='+ yesnoCheck(usesystemiconsChk)+CRLF
++'minimize-to-tray='+ yesnoCheck(MinimizetotrayChk)+CRLF
++'tray-icon-for-each-download='+ yesnoCheck(trayfordownloadChk)+CRLF
++'show-main-tray-icon='+ yesnoCheck(showmaintrayiconChk)+CRLF
++'always-on-top='+ yesnoCheck(alwaysontopChk)+CRLF
++'quit-dont-ask='+ yesnoCheck(quitWithoutAskingToSaveChk)+CRLF
++'support-descript.ion='+ yesnoCheck(supportDescriptionChk)+CRLF
++'oem-descript.ion='+ yesnoCheck(oemForIonChk)+CRLF
++'oem-tar='+ yesnoCheck(oemTarChk)+CRLF
++'enable-fingerprints='+ yesnoCheck(fingerprintsChk)+CRLF
++'save-fingerprints='+ yesnoCheck(saveNewFingerprintsChk)+CRLF
 +'auto-fingerprint='+intToStr(autoFingerprint)+CRLF
-+'stop-spiders='+yesno[stopSpidersChk.checked]+CRLF
-+'backup-saving='+yesno[backupSavingChk.checked]+CRLF
-+'recursive-listing='+yesno[recursiveListingChk.checked]+CRLF
-+'send-hfs-identifier='+yesno[sendHFSidentifierChk.checked]+CRLF
-+'list-hidden-files='+yesno[listfileswithhiddenattributeChk.checked]+CRLF
-+'list-system-files='+yesno[listfileswithsystemattributeChk.checked]+CRLF
-+'list-protected-items='+yesno[hideProtectedItemsChk.checked]+CRLF
-+'enable-no-default='+yesno[enableNoDefaultChk.checked]+CRLF
-+'browse-localhost='+yesno[browseUsingLocalhostChk.checked]+CRLF
++'stop-spiders='+ yesnoCheck(stopSpidersChk)+CRLF
++'backup-saving='+ yesnoCheck(backupSavingChk)+CRLF
++'recursive-listing='+ yesnoCheck(recursiveListingChk)+CRLF
++'send-hfs-identifier='+ yesnoCheck(sendHFSidentifierChk)+CRLF
++'list-hidden-files='+ yesnoCheck(listfileswithhiddenattributeChk)+CRLF
++'list-system-files='+ yesnoCheck(listfileswithsystemattributeChk)+CRLF
++'list-protected-items='+ yesnoCheck(hideProtectedItemsChk)+CRLF
++'enable-no-default='+ yesnoCheck(enableNoDefaultChk)+CRLF
++'browse-localhost='+ yesnoCheck(browseUsingLocalhostChk)+CRLF
 +'add-folder-default='+addFolderDefault+CRLF
 +'default-sorting='+defSorting+CRLF
 +'last-dialog-folder='+lastDialogFolder+CRLF
@@ -2813,19 +2859,20 @@ begin
 +'open-in-browser='+openInBrowser+CRLF
 +'flash-on='+flashOn+CRLF
 +'graph-rate='+intToStr(graph.rate)+CRLF
-+'graph-size='+intToStr(graph.size)+CRLF
++'graph-size='+ intToStr(graph.size)+CRLF
 +'graph-visible='+yesno[graphBox.visible]+CRLF
 +'no-download-timeout='+intToStr(noDownloadTimeout)+CRLF
 +'connections-timeout='+intToStr(connectionsInactivityTimeout)+CRLF
 +'no-reply-ban='+yesno[noReplyBan]+CRLF
 +'ban-list='+banlistToStr()+CRLF
 +'add-to-folder='+addToFolder+CRLF
++'last-run-folder='+exePath+CRLF
 +'last-file-open='+lastFileOpen+CRLF
-+'reload-on-startup='+yesno[reloadonstartupChk.checked]+CRLF
-+'https-url='+yesno[httpsUrlsChk.checked]+CRLF
-+'find-external-on-startup='+yesno[findExtOnStartupChk.checked]+CRLF
-+'encode-non-ascii='+yesno[encodenonasciiChk.checked]+CRLF
-+'encode-spaces='+yesno[encodespacesChk.checked]+CRLF
++'reload-on-startup='+ yesnoCheck(reloadonstartupChk)+CRLF
++'https-url='+ yesnoCheck(httpsUrlsChk)+CRLF
++'find-external-on-startup='+yesnoCheck(findExtOnStartupChk)+CRLF
++'encode-non-ascii='+yesnoCheck(encodenonasciiChk)+CRLF
++'encode-spaces='+yesnoCheck(encodespacesChk)+CRLF
 +'mime-types='+join('|',mimeTypes)+CRLF
 +'in-browser-if-mime='+yesno[inBrowserIfMIME]+CRLF
 +'icon-masks='+iconMasksStr+CRLF
@@ -2833,44 +2880,47 @@ begin
 +'address2name='+join('|',address2name)+CRLF
 +'recent-files='+join('|',recentFiles)+CRLF
 +'trusted-files='+join('|',trustedFiles)+CRLF
-+'accounts='+accountsToStr()+CRLF
-+'account-notes-wrap='+yesno[optionsFrm.notesWrapChk.checked]+CRLF
-+'tray-instead-of-quit='+yesno[trayInsteadOfQuitChk.checked]+CRLF
-+'compressed-browsing='+yesno[compressedbrowsingChk.checked]+CRLF
-+'use-iso-date-format='+yesno[useISOdateChk.Checked]+CRLF
-+'hints4newcomers='+yesno[HintsfornewcomersChk.checked]+CRLF
-+'save-totals='+yesno[saveTotalsChk.checked]+CRLF
++'accounts='+ accounts.ToStr()+CRLF
++'account-notes-wrap='+ yesnoCheck(optionsFrm.notesWrapChk)+CRLF
++'tray-instead-of-quit='+ yesnoCheck(trayInsteadOfQuitChk)+CRLF
++'compressed-browsing='+ yesnoCheck(compressedbrowsingChk)+CRLF
++'compressed-zip-stream='+ yesnoCheck(CompressZIPstreamsChk)+CRLF
++'use-iso-date-format='+ yesnoCheck(useISOdateChk)+CRLF
++'hints4newcomers='+ yesnoCheck(HintsfornewcomersChk)+CRLF
++'save-totals='+ yesnoCheck(saveTotalsChk)+CRLF
 +'log-toolbar-expanded='+yesno[mainfrm.expandedPnl.visible]+CRLF
-+'number-files-on-upload='+yesno[numberFilesOnUploadChk.checked]+CRLF
++'number-files-on-upload='+ yesnoCheck(numberFilesOnUploadChk)+CRLF
 +'do-not-log-address='+dontLogAddressMask+CRLF
 +'last-external-address='+dyndns.lastIP+CRLF
 +'min-disk-space='+intToStr(minDiskSpace)+CRLF
 +'many-items-warning='+yesno[warnManyItems]+CRLF
-+'load-single-comment-files='+yesno[loadSingleCommentsChk.checked]+CRLF
-+'copy-url-on-start='+yesno[autocopyURLonstartChk.checked]+CRLF
++'load-single-comment-files='+ yesnoCheck(loadSingleCommentsChk)+CRLF
++'copy-url-on-start='+ yesnoCheck(autocopyURLonstartChk)+CRLF
 +'connections-columns='+connColumnsToStr()+CRLF
-+'auto-comment='+yesno[autoCommentChk.checked]+CRLF
-+'update-daily='+yesno[updateDailyChk.checked]+CRLF
-+'delayed-update='+yesno[delayUpdateChk.checked]+CRLF
-+'tester-updates='+yesno[testerUpdatesChk.checked]+CRLF
-+'copy-url-on-addition='+yesno[AutocopyURLonadditionChk.checked]+CRLF
++'auto-comment='+ yesnoCheck(autoCommentChk)+CRLF
++'update-daily='+ yesnoCheck(updateDailyChk)+CRLF
++'delayed-update='+ yesnoCheck(delayUpdateChk)+CRLF
++'tester-updates='+ yesnoCheck(testerUpdatesChk)+CRLF
++'copy-url-on-addition='+ yesnoCheck(AutocopyURLonadditionChk)+CRLF
 +'ip-services='+join(';',IPservices)+CRLF
 +'ip-services-time='+floatToStr(IPservicesTime)+CRLF
-+'update-automatically='+yesno[updateAutomaticallyChk.checked]+CRLF
-+'prevent-standby='+yesno[preventStandbyChk.checked]+CRLF
++'update-automatically='+ yesnoCheck(updateAutomaticallyChk)+CRLF
++'prevent-standby='+ yesnoCheck(preventStandbyChk)+CRLF
 +'thumbs-get-for='+thumbsShowToExtStr+CRLF
++'theme-selected='+themeSelected+CRLF
 ;
   if not skipTotals then
     result := result
-      +'out-total='+intToStr(outTotalOfs+ fileSrv.htSrv.bytesSent)+CRLF
-      +'in-total='+intToStr(inTotalOfs+ fileSrv.htSrv.bytesReceived)+CRLF
+      +'out-total='+intToStr(outTotalOfs+ fileSrv.getBytes(ST_OUTCOME))+CRLF
+      +'in-total='+intToStr(inTotalOfs+ fileSrv.getBytes(ST_INCOME))+CRLF
       +'hits-total='+intToStr(hitsLogged)+CRLF
       +'downloads-total='+intToStr(downloadsLogged)+CRLF
       +'upload-total='+intToStr(uploadsLogged)+CRLF
 ;
 
-  if ipsEverConnected.Count < IPS_THRESHOLD then
-    result := result+'ips-ever-connected='+ipsEverConnected.DelimitedText+CRLF;
+  result := result + fileSrv.prefs.getAllPrefsU;
+  if fileSrv.ipsEverConnected.Count < IPS_THRESHOLD then
+    result := result+'ips-ever-connected='+ fileSrv.ipsEverConnected.DelimitedText+CRLF;
 
   if exclude = '' then
     exit;
@@ -2911,15 +2961,15 @@ function TmainFrm.setCfg(const cfg: String; alreadyStarted: Boolean): Boolean;
 var
   l, savedip, build: string;
   warnings: TStringDynArray;
-  userIconOfs: integer;
+//  userIconOfs: integer;
 
   function yes(const s: String=''): Boolean;
   begin result:= if_(s>'',s,l)='yes' end;
 
-  function int():int64;
+  function int(): int64;
   begin if not tryStrToInt64(l, result) then result:=0 end;
 
-  function real():TdateTime;
+  function real(): TdateTime;
   begin try result:=strToFloat(l) except result:=0 end end;
 
   procedure loadBanlist(s: String);
@@ -2927,123 +2977,25 @@ var
     p: string;
     i: integer;
   begin
-  { old versions wrongly used ; as ban-record separator, while it was already }
-  { used as address separator }
-  if (build < '018') and (pos(';',s) > 0) then
-    begin
-    s:=xtpl(s,[';','|']);
-    addString(MSG_BAN, warnings);
-    end;
-  setLength(banlist, 0);
-  i:=0;
-  while s > '' do
-    begin
-    p:=chop('|',s);
-    if p = '' then continue;
-    setLength(banlist, i+1);
-    banlist[i].comment:=xtpl(p,['\$pipe','|']); // unescape
-    banlist[i].ip:=chop('#',banlist[i].comment);
-    inc(i);
-    end;
-  end; // loadBanlist
-
-  function unzipS(s: String): String;
-  var
-    sa: RawByteString;
-  begin
-    sa := decodeB64(s);
-    try
-      result := UTF8ToString(ZDecompressStr(sa));
-     except
-      Result := UnUTF(sa);
-    end;
-  end; // unzip
-
-  function unzipA(s: String): RawByteString;
-  var
-    sa: RawByteString;
-  begin
-    sa := decodeB64(s);
-    try
-      result := ZDecompressStr(sa);
-     except
-      Result := sa;
-    end;
-  end; // unzip
-
-  procedure strToAccounts();
-  var
-  	s, t, p: string;
-    i: integer;
-    a: Paccount;
-  begin
-  accounts:=NIL;
-  while l > '' do
-  	begin
-    // accounts are separated by semicolons
-    s:=chop(';',l);
-    if s = '' then continue;
-    i:=length(accounts);
-    setLength(accounts, i+1);
-    a:=@accounts[i];
-    a.enabled:=TRUE; // by default
+    { old versions wrongly used ; as ban-record separator, while it was already }
+    { used as address separator }
+    if (build < '018') and (pos(';',s) > 0) then
+      begin
+      s:=xtpl(s,[';','|']);
+      addString(MSG_BAN, warnings);
+      end;
+    setLength(banlist, 0);
+    i:=0;
     while s > '' do
       begin
-      // account properties are separated by pipes
-      t:=chop('|',s);
-      p:=chop(':',t); // get property name
-      if p = '' then
-        continue;
-      if p = 'login' then
-      	begin
-        if not anycharIn(':', t) then
-  	      t:=decodeB64utf8(t);
-  	    a.user:=chop(':',t);
-	      a.pwd:=t;
-        end
-       else
-      if p = 'enabled' then a.enabled:=yes(t)
-       else
-      if p = 'no-limits' then a.noLimits:=yes(t)
-       else
-      if p = 'group' then a.group:=yes(t)
-       else
-      if p = 'redir' then a.redir:=t
-       else
-      if p = 'link' then a.link:=split(':',t)
-       else
-      if p = 'notes' then a.notes := unzipS(t);
+      p:=chop('|',s);
+      if p = '' then continue;
+      setLength(banlist, i+1);
+      banlist[i].comment:=xtpl(p,['\$pipe','|']); // unescape
+      banlist[i].ip:=chop('#',banlist[i].comment);
+      inc(i);
       end;
-    end;
-  end; // strToAccounts
-
-  procedure strToIconmasks();
-  var
-    i: integer;
-  begin
-  while l > '' do
-    begin
-    i:=length(iconMasks);
-    setLength(iconMasks, i+1);
-    iconMasks[i].str:=chop('|',l);
-    iconMasks[i].int:=StrToIntDef(chop('||',l),0);
-    end;
-  end; // strToIconmasks
-
-  procedure readUserIconMasks();
-  var
-    i, iFrom, iTo: integer;
-  begin
-  userIconOfs := IconsDM.images.Count;
-    while l > '' do
-    begin
-    iFrom:=strTointDef(chop(':', l), -1);
-    iTo:=str2pic(unzipA(chop('|', l)), 16);
-    for i:=0 to length(iconMasks)-1 do
-      if iconMasks[i].int = iFrom then
-        iconMasks[i].int:=iTo;
-    end;
-  end; // readUserIconmasks
+  end; // loadBanlist
 
   procedure strToFont(f:Tfont);
   begin
@@ -3062,15 +3014,27 @@ var
   var
     i: integer;
   begin
-  // add missing default mime types
-  i:=length(DEFAULT_MIME_TYPES);
-  while i > 0 do
-    begin
-    dec(i, 2);
-    if stringExists(DEFAULT_MIME_TYPES[i], mimeTypes) then continue;
-    // add the missing pair at the beginning
-    addArray(mimeTypes, DEFAULT_MIME_TYPES, 0, i, 2);
-    end;
+    // add missing default mime types
+    i := length(DEFAULT_MIME_TYPES);
+    while i > 0 do
+     begin
+      dec(i, 2);
+      if stringExists(DEFAULT_MIME_TYPES[i], mimeTypes) then
+        continue;
+      // add the missing pair at the beginning
+      addArray(mimeTypes, DEFAULT_MIME_TYPES, 0, i, 2);
+     end;
+  end;
+
+  function CheckYes(Chk: TCheckBox; const s: String=''): Boolean; OverLoad;
+  begin
+    Result := if_(s>'',s,l)='yes';
+    Chk.Checked := Result;
+  end;
+  function CheckYes(Chk: TMenuItem; const s: String=''): Boolean; OverLoad;
+  begin
+    Result := if_(s>'',s,l)='yes';
+    Chk.Checked := Result;
   end;
 
 const
@@ -3117,7 +3081,7 @@ begin
        else
       if h = 'save-in-out-totals' then
         h:='save-totals'
-       else
+      ;
       if h = 'active' then
         activateServer := yes
        else
@@ -3136,7 +3100,7 @@ begin
       if h = 'port' then
         begin
           if fileSrv.httpServIsActive then
-            changePort(l)
+            changePort(srv, l)
            else
             port:=l;
         end
@@ -3166,7 +3130,7 @@ begin
         setEasyMode(yes)
        else
       if h = 'keep-bak-updating' then
-        keepBakUpdatingChk.checked := yes
+        CheckYes(keepBakUpdatingChk)
        else
       if h = 'encode-non-ascii' then
         encodenonasciiChk.checked := yes
@@ -3175,10 +3139,10 @@ begin
         encodespacesChk.checked := yes
        else
       if h = 'search-better-ip' then
-        searchbetteripChk.checked := yes
+        CheckYes(searchbetteripChk)
        else
       if h = 'start-minimized' then
-        startMinimizedChk.checked := yes
+        CheckYes(startMinimizedChk)
        else
       if h = 'files-box-ratio' then
         filesBoxRatio := real
@@ -3196,13 +3160,13 @@ begin
         logFontSize := int
        else
       if h = 'log-date' then
-        LogdateChk.checked := yes
+        CheckYes(LogdateChk)
        else
       if h = 'log-time' then
-        LogtimeChk.checked := yes
+        CheckYes(LogtimeChk)
        else
       //if h = 'log-read-only' then
-        //logbox.readonly:=yes;
+        //logbox.readonly := yes;
       if h = 'log-browsing' then
         logBrowsingChk.checked:=yes;
       if h = 'log-icons' then logIconsChk.checked:=yes;
@@ -3259,121 +3223,333 @@ begin
         autosaveoptionsChk.checked := yes
        else
       if h = 'use-comment-as-realm' then
-        usecommentasrealmChk.checked:=yes
+        usecommentasrealmChk.checked := yes
        else
       if h = 'persistent-connections'then
-        persistentconnectionsChk.checked:=yes
+        CheckYes(persistentconnectionsChk)
        else
       if h = 'show-main-tray-icon' then
-        showmaintrayiconChk.checked:=yes
+        CheckYes(showmaintrayiconChk)
        else
       if h = 'delete-dont-ask' then
-        deleteDontAskChk.checked := yes
+        CheckYes(deleteDontAskChk)
        else
       if h = 'tray-icon-for-each-download' then
-        trayfordownloadChk.checked := yes
+        CheckYes(trayfordownloadChk)
        else
       if h = 'copy-url-on-addition' then
-        AutocopyURLonadditionChk.checked:=yes;
-    if h = 'copy-url-on-start' then autocopyURLonstartChk.checked:=yes;
-    if h = 'enable-macros' then enableMacrosChk.checked:=yes;
-    if h = 'update-daily' then updateDailyChk.checked:=yes;
-    if h = 'tray-instead-of-quit' then trayInsteadOfQuitChk.checked:=yes;
-    if h = 'modal-options' then modalOptionsChk.checked:=yes;
-    if h = 'beep-on-flash' then beepChk.checked:=yes;
-    if h = 'prevent-leeching' then preventLeechingChk.checked:=yes;
-    if h = 'list-hidden-files' then listfileswithhiddenattributeChk.checked:=yes;
-    if h = 'list-system-files' then listfileswithsystemattributeChk.checked:=yes;
-    if h = 'list-protected-items' then hideProtectedItemsChk.checked:=yes;
-    if h = 'always-on-top' then alwaysontopChk.checked:=yes;
-    if h = 'support-descript.ion' then supportDescriptionChk.Checked:=yes;
-    if h = 'oem-descript.ion' then oemForIonChk.checked:=yes;
-    if h = 'oem-tar' then oemTarChk.checked:=yes;
-    if h = 'free-login' then freeLoginChk.checked:=yes;
-    if h = 'https-url' then httpsUrlsChk.checked:=yes;
-    if h = 'enable-fingerprints' then fingerprintsChk.checked:=yes;
-    if h = 'save-fingerprints' then saveNewFingerprintsChk.checked:=yes;
-    if h = 'auto-fingerprint' then setAutoFingerprint(int);
-    if h = 'log-toolbar-expanded' then setLogToolbar(yes);
-    if h = 'last-update-check' then lastUpdateCheck:=real;
-    if h = 'recursive-listing' then recursiveListingChk.checked:=yes;
-    if h = 'enable-no-default' then enableNoDefaultChk.checked:=yes;
-    if h = 'browse-localhost' then browseUsingLocalhostChk.checked:=yes;
-    if h = 'tpl-file' then tplFilename:=l;
-    if h = 'tpl-editor' then tplEditor:=l;
-    if h = 'add-folder-default' then addFolderDefault:=l;
-    if h = 'default-sorting' then defSorting:=l;
-    if h = 'last-dialog-folder' then lastDialogFolder:=l;
-    if h = 'send-hfs-identifier' then sendHFSidentifierChk.checked:=yes;
-		if h = 'auto-save-vfs' then autosaveVFSchk.checked:=yes;
-    if h = 'add-to-folder' then addToFolder:=l;
-    if h = 'getright-template' then DMbrowserTplChk.checked:=yes;
-		if h = 'speed-limit' then setSpeedLimit(real);
-		if h = 'speed-limit-ip' then setSpeedLimitIP(real);
-    if h = 'no-download-timeout' then setNoDownloadTimeout(int);
-    if h = 'connections-timeout' then connectionsInactivityTimeout:=int;
-    if h = 'max-ips' then setMaxIPs(int);
-    if h = 'max-ips-downloading' then setMaxIPsDLing(int);
-    if h = 'max-connections' then setMaxConnections(int);
-    if h = 'max-connections-by-ip' then setMaxConnectionsIP(int);
-    if h = 'max-contemporary-dls' then setMaxDLs(int);
-    if h = 'max-contemporary-dls-ip' then setMaxDLsIP(int);
-		if h = 'tray-message' then trayMsg:=xtpl(unescapeNL(l), [CRLF, trayNL]);
-    if h = 'ban-list' then loadBanlist(l);
-    if h = 'no-reply-ban' then noReplyBan:=yes;
-    if h = 'save-totals' then saveTotalsChk.checked:=yes;
-    if h = 'allowed-referer' then allowedReferer:=l;
-    if h = 'open-in-browser' then openInBrowser:=l;
-		if h = 'last-file-open' then lastFileOpen:=l;
-		if h = 'reload-on-startup' then reloadonstartupChk.checked:=yes;
-    if h = 'stop-spiders' then stopSpidersChk.checked:=yes;
-    if h = 'find-external-on-startup' then findExtOnStartupChk.checked:=yes;
-    if h = 'dont-include-port-in-url' then noPortInUrlChk.checked:=yes;
-    if h = 'tray-shows' then trayshows:=strToTrayShow(l);
-    if h = 'auto-save-vfs-every' then setAutosave(autosaveVFS, int);
-    if h = 'external-ip-server' then customIPservice:=l;
-    if h = 'only-1-instance' then only1instanceChk.checked:=yes;
-		if h = 'graph-rate' then setGraphRate(int);
-		if h = 'graph-size' then graph.size:=int;
-      if h = 'forwarded-mask' then forwardedMask:=ifThen(l='127.0.0.1','::1;127.0.0.1',l)
+        CheckYes(AutocopyURLonadditionChk)
        else
-      if h = 'delete-partial-uploads' then deletePartialUploadsChk.checked:=yes;
-      if h = 'rename-partial-uploads' then renamePartialUploads:=l;
-      if h = 'do-not-log-address' then dontLogAddressMask:=l;
-      if h = 'out-total' then outTotalOfs:=int;
-      if h = 'in-total' then inTotalOfs:=int;
-      if h = 'hits-total' then hitsLogged:=int;
-      if h = 'downloads-total' then downloadsLogged:=int;
-      if h = 'upload-total' then uploadsLogged:=int;
-      if h = 'min-disk-space' then minDiskSpace:=int;
-      if h = 'flash-on' then flashOn:=l;
-      if h = 'last-external-address' then dyndns.lastIP:=l;
-      if h = 'recents' then recentFiles:=split(';',l);   // legacy: moved to recent-files because the split-char changed in #111
-      if h = 'recent-files' then recentFiles:=split('|',l);
-      if h = 'trusted-files' then trustedFiles:=split('|',l);
-      if h = 'ips-ever-connected' then ipsEverConnected.DelimitedText:=l;
-      if h = 'mime-types' then mimeTypes:= UnicodeSplit('|',l);
-      if h = 'in-browser-if-mime' then inBrowserIfMIME:=yes;
-      if h = 'address2name' then address2name:= UnicodeSplit('|',l);
-      if h = 'compressed-browsing' then compressedbrowsingChk.checked:=yes;
-      if h = 'hints4newcomers' then HintsfornewcomersChk.checked:=yes;
-      if h = 'tester-updates' then testerUpdatesChk.checked:=yes;
-      if h = 'number-files-on-upload' then numberFilesOnUploadChk.checked:=yes;
-      if h = 'many-items-warning' then warnManyItems:=yes;
-      if h = 'load-single-comment-files' then loadSingleCommentsChk.checked:=yes;
-      if h = 'accounts' then strToAccounts();
-      if h = 'use-iso-date-format' then useISOdateChk.Checked:=yes;
-      if h = 'auto-comment' then autoCommentChk.checked:=yes;
-      if h = 'icon-masks-user-images' then readUserIconMasks();
-      if h = 'icon-masks' then strToIconmasks();
-      if h = 'connections-columns' then serializedConnColumns:=l;
-      if h = 'ip-services' then IPservices:= UnicodeSplit(';', l);
-      if h = 'ip-services-time' then IPservicesTime:=real;
-      if h = 'update-automatically' then updateAutomaticallyChk.checked:=yes;
-      if h = 'delayed-update' then delayUpdateChk.checked:=yes;
-      if h = 'links-before' then linksBeforeChk.checked:=yes;
-      if h = 'account-notes-wrap' then optionsFrm.notesWrapChk.checked:=yes;
-
+      if h = 'copy-url-on-start' then
+        CheckYes(autocopyURLonstartChk)
+       else
+      if h = 'enable-macros' then
+        CheckYes(enableMacrosChk)
+       else
+      if h = 'update-daily' then
+        CheckYes(updateDailyChk)
+       else
+      if h = 'tray-instead-of-quit' then
+        CheckYes(trayInsteadOfQuitChk)
+       else
+      if h = 'modal-options' then
+        CheckYes(modalOptionsChk)
+       else
+      if h = 'beep-on-flash' then
+        CheckYes(beepChk)
+       else
+      if h = 'prevent-leeching' then
+        preventLeechingChk.checked := yes
+       else
+      if h = 'list-hidden-files' then
+        listfileswithhiddenattributeChk.checked := yes
+       else
+      if h = 'list-system-files' then
+        listfileswithsystemattributeChk.checked := yes
+       else
+      if h = 'list-protected-items' then
+        hideProtectedItemsChk.checked := yes
+       else
+      if h = 'always-on-top' then
+        alwaysontopChk.checked := yes
+       else
+      if h = 'support-descript.ion' then
+        supportDescriptionChk.Checked := yes
+       else
+      if h = 'oem-descript.ion' then
+        oemForIonChk.checked := yes
+       else
+      if h = 'oem-tar' then
+        oemTarChk.checked := yes
+       else
+      if h = 'free-login' then
+        freeLoginChk.checked := yes
+       else
+      if h = 'https-url' then
+        httpsUrlsChk.checked := yes
+       else
+      if h = 'enable-fingerprints' then
+        fingerprintsChk.checked := yes
+       else
+      if h = 'save-fingerprints' then
+        saveNewFingerprintsChk.checked := yes
+       else
+      if h = 'auto-fingerprint' then
+        setAutoFingerprint(int)
+       else
+      if h = 'log-toolbar-expanded' then
+        setLogToolbar(yes)
+       else
+      if h = 'last-update-check' then
+        lastUpdateCheck := real
+       else
+      if h = 'recursive-listing' then
+        recursiveListingChk.checked := yes
+       else
+      if h = 'enable-no-default' then
+        enableNoDefaultChk.checked := yes
+       else
+      if h = 'browse-localhost' then
+        browseUsingLocalhostChk.checked := yes
+       else
+      if h = 'tpl-file' then
+        tplFilename := l
+       else
+      if h = 'tpl-editor' then
+        tplEditor := l
+       else
+      if h = 'tpl-no-macros-file' then
+        tplNoMacrosFN := l
+       else
+      if h = 'add-folder-default' then
+        addFolderDefault := l
+       else
+      if h = 'default-sorting' then
+        defSorting := l
+       else
+      if h = 'last-dialog-folder' then
+        lastDialogFolder := l
+       else
+      if h = 'send-hfs-identifier' then
+        sendHFSidentifierChk.checked := yes
+       else
+      if h = 'auto-save-vfs' then
+        autosaveVFSchk.checked := yes
+       else
+      if h = 'add-to-folder' then
+        addToFolder := l
+       else
+      if h = 'getright-template' then
+        DMbrowserTplChk.checked := yes
+       else
+      if h = 'speed-limit' then
+        setSpeedLimit(real)
+       else
+      if h = 'speed-limit-ip' then
+        setSpeedLimitIP(real)
+       else
+      if h = 'no-download-timeout' then
+        setNoDownloadTimeout(int)
+       else
+      if h = 'connections-timeout' then
+        connectionsInactivityTimeout := int
+       else
+      if h = 'max-ips' then
+        setMaxIPs(int)
+       else
+      if h = 'max-ips-downloading' then
+        setMaxIPsDLing(int)
+       else
+      if h = 'max-connections' then
+        setMaxConnections(int)
+       else
+      if h = 'max-connections-by-ip' then
+        setMaxConnectionsIP(int)
+       else
+      if h = 'max-contemporary-dls' then
+        setMaxDLs(int)
+       else
+      if h = 'max-contemporary-dls-ip' then
+        setMaxDLsIP(int)
+       else
+      if h = 'tray-message' then
+        trayMsg := xtpl(unescapeNL(l), [CRLF, trayNL])
+       else
+      if h = 'ban-list' then
+        loadBanlist(l)
+       else
+      if h = 'no-reply-ban' then
+        noReplyBan := yes
+       else
+      if h = 'save-totals' then
+        saveTotalsChk.checked := yes
+       else
+      if h = 'allowed-referer' then
+        allowedReferer := l
+       else
+      if h = 'open-in-browser' then
+        openInBrowser := l
+       else
+      if h = 'last-run-folder' then
+        lastRunFolder := l
+       else
+      if h = 'last-file-open' then
+        lastFileOpen := l
+       else
+      if h = 'reload-on-startup' then
+        reloadonstartupChk.checked := yes
+       else
+      if h = 'stop-spiders' then
+        stopSpidersChk.checked := yes
+       else
+      if h = 'find-external-on-startup' then
+        findExtOnStartupChk.checked := yes
+       else
+      if h = 'dont-include-port-in-url' then
+        noPortInUrlChk.checked := yes
+       else
+      if h = 'tray-shows' then
+        trayshows := strToTrayShow(l)
+       else
+      if h = 'auto-save-vfs-every' then
+        setAutosave(autosaveVFS, int)
+       else
+      if h = 'external-ip-server' then
+        customIPservice := l
+       else
+      if h = 'only-1-instance' then
+        only1instanceChk.checked := yes
+       else
+      if h = 'graph-rate' then
+        setGraphRate(int)
+       else
+      if h = 'graph-size' then
+        graph.size := int
+       else
+      if h = 'forwarded-mask' then
+        forwardedMask:=ifThen(l='127.0.0.1','::1;127.0.0.1',l)
+       else
+      if h = 'delete-partial-uploads' then
+        deletePartialUploadsChk.checked := yes
+       else
+      if h = 'rename-partial-uploads' then
+        renamePartialUploads := l
+       else
+      if h = 'do-not-log-address' then
+        dontLogAddressMask := l
+       else
+      if h = 'out-total' then
+        outTotalOfs := int
+       else
+      if h = 'in-total' then
+        inTotalOfs := int
+       else
+      if h = 'hits-total' then
+        hitsLogged := int
+       else
+      if h = 'downloads-total' then
+        downloadsLogged := int
+       else
+      if h = 'upload-total' then
+        uploadsLogged := int
+       else
+      if h = 'min-disk-space' then
+        minDiskSpace := int
+       else
+      if h = 'flash-on' then
+        flashOn := l
+       else
+      if h = 'last-external-address' then
+        dyndns.lastIP := l
+       else
+      if h = 'recents' then
+        recentFiles := split(';',l)   // legacy: moved to recent-files because the split-char changed in #111
+       else
+      if h = 'recent-files' then
+        recentFiles := split('|',l)
+       else
+      if h = 'trusted-files' then
+        trustedFiles := split('|',l)
+       else
+      if h = 'ips-ever-connected' then
+        fileSrv.ipsEverConnected.DelimitedText := l
+       else
+      if h = 'mime-types' then
+        mimeTypes := UnicodeSplit('|',l)
+       else
+      if h = 'in-browser-if-mime' then
+        inBrowserIfMIME := yes
+       else
+      if h = 'address2name' then
+        address2name := UnicodeSplit('|',l)
+       else
+      if h = 'compressed-browsing' then
+        compressedbrowsingChk.checked := yes
+       else
+      if h='compressed-zip-stream=' then
+        CompressZIPstreamsChk.Checked := yes
+       else
+      if h = 'hints4newcomers' then
+        HintsfornewcomersChk.checked := yes
+       else
+      if h = 'tester-updates' then
+        testerUpdatesChk.checked := yes
+       else
+      if h = 'number-files-on-upload' then
+        numberFilesOnUploadChk.checked := yes
+       else
+      if h = 'many-items-warning' then
+        warnManyItems := yes
+       else
+      if h = 'load-single-comment-files' then
+        loadSingleCommentsChk.checked := yes
+       else
+      if h = 'accounts' then
+        accounts.fromStr(l)
+       else
+      if h = 'use-iso-date-format' then
+        useISOdateChk.Checked := yes
+       else
+      if h = 'auto-comment' then
+        autoCommentChk.checked := yes
+       else
+      if h = 'icon-masks-user-images' then
+        iconMasks.AddUserIconMasksFromStr(l)
+       else
+      if h = 'icon-masks' then
+        iconMasks.AddFromStr(l)
+       else
+      if h = 'connections-columns' then
+        serializedConnColumns := l
+       else
+      if h = 'ip-services' then
+        IPservices := UnicodeSplit(';', l)
+       else
+      if h = 'ip-services-time' then
+        IPservicesTime := real
+       else
+      if h = 'update-automatically' then
+        CheckYes(updateAutomaticallyChk)
+       else
+      if h = 'delayed-update' then
+        CheckYes(delayUpdateChk)
+       else
+      if h = 'links-before' then
+        linksBeforeChk.checked := yes
+       else
+      if h = 'account-notes-wrap' then
+        CheckYes(optionsFrm.notesWrapChk)
+       else
+      if h = 'thumbs-get-for' then
+        begin
+          applyThumbsExtStr(l);
+        end
+       else
+      if h = 'theme-selected' then
+        begin
+          setTheme(l, True);
+        end
+       else
       if h = 'graph-visible' then
         begin
           if yes then
@@ -3408,7 +3584,7 @@ if lastGoodConnHeight > 0 then
   connPnl.Height:=lastGoodConnHeight;
 if not fileExists(tplFilename) then
   setTplText(fileSrv);
-srv.persistentConnections := persistentconnectionsChk.Checked;
+fileSrv.htSrv.persistentConnections := persistentconnectionsChk.Checked;
 applyFilesBoxRatio();
 updateRecentFilesMenu();
 keepTplUpdated(fileSrv);
@@ -3431,7 +3607,7 @@ for i:=0 to length(MIMEtypes)-1 do
     else
    else
     if activateServer then
-      startServer();
+      startServer(srv);
   result := TRUE;
 
   updateCurrentCFG();
@@ -3441,7 +3617,7 @@ function loadCfg(var ini: String; Const tpl: String): Boolean;
 
   // until 2.2 the template could be kept in the registry, so we need to move it now.
   // returns true if the registry source can be deleted
-  function moveLegacyTpl(const tpl: String):boolean;
+  function moveLegacyTpl(const tpl: String): Boolean;
   begin
     result := FALSE;
     if (tplFilename > '') or (tpl = '') then
@@ -3452,7 +3628,6 @@ function loadCfg(var ini: String; Const tpl: String): Boolean;
 
 begin
   result := TRUE;
-  ipsEverConnected.text := UnUTF(loadfile(IPS_FILE));
   ini := UnUTF(loadFile(cfgPath+CFG_FILE));
   if ini > '' then
     begin
@@ -3481,7 +3656,7 @@ end; // loadCfg
 
 procedure TmainFrm.Viewhttprequest1Click(Sender: TObject);
 var
-  cd: TconnData;
+  cd: TconnDataMain;
 begin
   cd := selectedConnection();
   if cd = NIL then
@@ -3494,7 +3669,7 @@ var
   bs,          // is there any connection selected?
   ba: boolean; // is there any connection listed and connected?
   i: integer;
-  cd: TconnData;
+  cd: TconnDataMain;
 begin
   cd := selectedConnection();
   bs := assigned(cd);
@@ -3582,8 +3757,10 @@ var
   begin mi.visible:=other.visible and onlySatisfied(only) end;
 
   procedure visibleIf(mi: Tmenuitem; should: Boolean; only: Integer=ONLY_ANY);
-  begin if should then
-    mi.visible:=TRUE and onlySatisfied(only) end;
+  begin
+    if should then
+      mi.visible:=TRUE and onlySatisfied(only)
+  end;
 
   procedure checkedIf(mi: Tmenuitem; should: Boolean);
   begin if should then mi.checked:=TRUE end;
@@ -3725,8 +3902,8 @@ case saveMode of
     result:=saveregistry(CFG_KEY, '', cfg);
     end;
   end;
-if ipsEverConnected.Count >= IPS_THRESHOLD  then
-  saveFileU(IPS_FILE, ipsEverConnected.text)
+if fileSrv.ipsEverConnected.Count >= IPS_THRESHOLD  then
+  saveFileU(IPS_FILE, fileSrv.ipsEverConnected.text)
 else
   deleteFile(IPS_FILE);
 
@@ -3754,7 +3931,7 @@ procedure TmainFrm.About1Click(Sender: TObject);
 const
   copyright = 'HFS version %s'
   +#13'Copyright (C) 2002-2020  Massimo Melina (www.rejetto.com)'
-  +#13'Copyright (C) 2020-2025  Rapid D'
+  +#13'Copyright (C) 2020-2026  Rapid D'
   +#13#13'HFS comes with ABSOLUTELY NO WARRANTY under the license GNU GPL 3.0. For details click Menu -> Web links -> License'
   +#13'This is FREE software, and you are welcome to redistribute it under certain conditions.'
   +#13#13'Build #%s';
@@ -3787,12 +3964,14 @@ begin
 
       if assigned(data.limiter) then
         begin
-        srv.limiters.remove(data.limiter);
-        freeAndNIL(data.limiter);
+          srv.limiters.remove(data.limiter);
+          freeAndNIL(data.limiter);
         end;
-      data.conn.data := NIL;
       if assigned(data.conn) then
-        freeAndNIL(data.conn);
+        begin
+          data.conn.data := NIL;
+          freeAndNIL(data.conn);
+        end;
       try
         freeAndNIL(data)
        except
@@ -3804,9 +3983,9 @@ end; // purgeConnections
 function Tmainfrm.recalculateGraph(): Boolean;
 begin
   Result := False;
-  if (srv = NIL) or quitting then
+  if (fileSrv.htSrv = NIL) or quitting then
     exit;
-  Result := srvUtils.recalculateGraph(srv);
+  Result := srvUtils.recalculateGraph(fileSrv.htSrv);
 end; // recalculateGraph
 
 procedure Tmainfrm.onServerStatusChanged(open: Boolean);
@@ -3866,74 +4045,80 @@ var
   size: integer;
   fn: string;
 begin
-result:=FALSE;
-if not mono.working then
-  begin
-  msgDlg(MSG_UPD_REQ_ONLY1, MB_ICONWARNING);
-  openURL(url);
-  exit;
-  end;
-if mainfrm.delayUpdateChk.checked
-and (mainfrm.fileSrv.getConnectionsCount > 0) then
-  begin
-  updateASAP:=url;
-  stopServer();
-  mainfrm.kickidleconnections1Click(NIL);
-  mainfrm.setStatusBarText(MSG_UPD_WAIT, 20);
-  exit;
-  end;
-// must ask BEFORE: when the batch will be running, nothing should stop it, or it will fail
-if not checkVfsOnQuit() then exit;
-VFSmodified:=FALSE;
+  result:=FALSE;
+  if not mono.working then
+    begin
+      msgDlg(MSG_UPD_REQ_ONLY1, MB_ICONWARNING);
+      openURL(url);
+      exit;
+    end;
+  if mainfrm.delayUpdateChk.checked
+  and (mainfrm.fileSrv.getConnectionsCount > 0) then
+    begin
+      updateASAP:=url;
+      stopServer(mainfrm.fileSrv.htSrv);
+      mainfrm.kickidleconnections1Click(NIL);
+      mainfrm.setStatusBarText(MSG_UPD_WAIT, 20);
+      exit;
+    end;
+  // must ask BEFORE: when the batch will be running, nothing should stop it, or it will fail
+  if not checkVfsOnQuit() then
+    exit;
+  VFSmodified := FALSE;
 
-progFrm.show(MSG_UPD_DL, TRUE);
-try
-  fn:=paramStr(0)+'.new';
-  size:=sizeOfFile(fn);
-  // a previous failed update attempt? avoid re-downloading if not necessary
-  if (size <= 0) or (httpFileSize(url) <> size) then
-    try
-      if not UtilLib.httpGetFileWithCheck(url, fn, 2, mainfrm.progFrmHttpProgress) then
-        begin
+  progFrm.show(MSG_UPD_DL, TRUE);
+  try
+    fn:=paramStr(0)+'.new';
+    size:=sizeOfFile(fn);
+    // a previous failed update attempt? avoid re-downloading if not necessary
+    if (size <= 0) or (httpFileSize(url) <> size) then
+      try
+        if not UtilLib.httpGetFileWithCheck(url, fn, 2, mainfrm.progFrmHttpProgress) then
+          begin
+          if not lockTimerevent then
+            msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
+          exit;
+          end;
+      except
         if not lockTimerevent then
-          msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
+          msgDlg(MSG_UPD_SAVE_ERROR, MB_ICONERROR);
         exit;
         end;
-    except
-      if not lockTimerevent then
-        msgDlg(MSG_UPD_SAVE_ERROR, MB_ICONERROR);
-      exit;
-      end;
-finally progFrm.hide() end;
-if progFrm.cancelRequested then
-  begin
-  deleteFile(fn);
-  exit;
+   finally
+    progFrm.hide()
   end;
+  if progFrm.cancelRequested then
+    begin
+      deleteFile(fn);
+      exit;
+    end;
 
-try
-  progFrm.show(MSG_PROCESSING);
-  saveFileU(UPDATE_BATCH_FILE, format(UPDATE_BATCH, [
-    if_(isNT(), '""'),
-    paramStr(0),
-    if_(not mainfrm.keepBakUpdatingChk.checked,'REM '),
-    exePath,
-    fn
-  ]));
-  execNew(UPDATE_BATCH_FILE);
-  result:=TRUE;
-finally progFrm.hide() end;
+  try
+    progFrm.show(MSG_PROCESSING);
+    saveFileU(UPDATE_BATCH_FILE, format(UPDATE_BATCH, [
+      if_(isNT(), '""'),
+      paramStr(0),
+      if_(not mainfrm.keepBakUpdatingChk.checked,'REM '),
+      exePath,
+      fn
+    ]));
+    execNew(UPDATE_BATCH_FILE);
+    result:=TRUE;
+   finally
+    progFrm.hide()
+  end;
 end; // doTheUpdate
 
 function promptForUpdating(url:string):boolean;
 begin
-result:=FALSE;
-if url = '' then exit;
-if not mainfrm.updateAutomaticallyChk.checked
-and (msgDlg(MSG_UPDATE, MB_YESNO) = IDNO) then
-  exit;
-doTheUpdate(url);
-result:=TRUE;
+  result := FALSE;
+  if url = '' then
+    exit;
+  if not mainfrm.updateAutomaticallyChk.checked
+  and (msgDlg(MSG_UPDATE, MB_YESNO) = IDNO) then
+    exit;
+  doTheUpdate(url);
+  result := TRUE;
 end; // promptForUpdating
 
 function downloadUpdateInfo():Ttpl;
@@ -3969,97 +4154,105 @@ end; // downloadUpdateInfo
 procedure Tmainfrm.autoCheckUpdates();
 var
   info: Ttpl;
-  updateURL, ver, build: string;
+  updateURL, ver, build: String;
 
-  function thereSnew(kind:string):boolean;
+  function thereSnew(const kind: String): Boolean;
   var
     s: string;
   begin
-  s:=trim(info['last '+kind+' build']);
-  result:=(s > VERSION_BUILD) and (s <> refusedUpdate);
-  if not result then exit;
-  build:=s;
-  updateURL:=trim(info['last '+kind+' url']);
-  ver:=trim(info['last '+kind]);
+    s := trim(info['last '+kind+' build']);
+    result:=(s > VERSION_BUILD) and (s <> refusedUpdate);
+    if not result then
+      exit;
+    build := s;
+    updateURL := trim(info['last '+kind+' url']);
+    ver:=trim(info['last '+kind]);
   end;
 
 begin
-if (VERSION_STABLE and (now()-lastUpdateCheck < 1))
-or (now()-lastUpdateCheck < 1/3) then exit;
-setStatusBarText(MSG_CHK_UPD);
-try
-  info:=downloadUpdateInfo();
-  if info = NIL then
-    begin
-    if logOtherEventsChk.checked then
-      add2log(MSG_CHK_UPD_FAIL);
-    setStatusBarText(MSG_CHK_UPD_FAIL);
+  if (VERSION_STABLE and (now()-lastUpdateCheck < 1))
+     or (now()-lastUpdateCheck < 1/3) then
     exit;
-    end;
-  if not thereSnew('stable')
-  and (not VERSION_STABLE or testerUpdatesChk.checked) then
-    thereSnew('untested');
-  // same version? we show build number
-  if ver = srvConst.VERSION then
-    ver:=format(MSG_CHK_UPD_VER_EXT, [build, VERSION_BUILD]);
-  if logOtherEventsChk.checked then
-    add2log(MSG_CHK_UPD_HEAD+ifThen(updateURL = '', MSG_CHK_UPD_NONE, format(MSG_CHK_UPD_VER,[ver])));
-  parseVersionNotice(info['version notice']);
-  setStatusBarText('');
-  if updateURL = '' then exit;
-  if updateAutomaticallyChk.checked
-  and doTheUpdate(updateURL) then exit;
-  // notify the user gently
-  updateBtn.show();
-  updateWaiting:=updateURL;
-  flash();
-finally freeAndNIL(info) end;
+  setStatusBarText(MSG_CHK_UPD);
+  try
+    info:=downloadUpdateInfo();
+    if info = NIL then
+      begin
+        if logOtherEventsChk.checked then
+          add2log(MSG_CHK_UPD_FAIL);
+        setStatusBarText(MSG_CHK_UPD_FAIL);
+        exit;
+      end;
+    if not thereSnew('stable')
+       and (not VERSION_STABLE or testerUpdatesChk.checked) then
+      thereSnew('untested');
+    // same version? we show build number
+    if ver = srvConst.VERSION then
+      ver := format(MSG_CHK_UPD_VER_EXT, [build, VERSION_BUILD]);
+    if logOtherEventsChk.checked then
+      add2log(MSG_CHK_UPD_HEAD+ifThen(updateURL = '', MSG_CHK_UPD_NONE, format(MSG_CHK_UPD_VER,[ver])));
+    parseVersionNotice(info['version notice']);
+    setStatusBarText('');
+    if updateURL = '' then
+      exit;
+    if updateAutomaticallyChk.checked
+     and doTheUpdate(updateURL) then
+      exit;
+    // notify the user gently
+    updateBtn.show();
+    updateWaiting:=updateURL;
+    flash();
+   finally
+    freeAndNIL(info)
+  end;
 end; // autoCheckUpdates
 
 procedure loadEvents();
 begin
   if not newMtime(cfgpath+EVENTSCRIPTS_FILE, eventScriptsLast) then
     exit;
-  eventScripts.fullText:=loadFile(cfgpath+EVENTSCRIPTS_FILE);
-  runEventScript(mainFrm.fileSrv, 'init');
+  eventScripts.fullText := loadFile(cfgpath+EVENTSCRIPTS_FILE);
+  mainFrm.fileSrv.runEventScript('init');
 end;
 
 procedure Tmainfrm.updateCopyBtn();
 var
   s: string;
 begin
-s:=copyBtn.caption;
-try
-  copyBtn.Caption:=if_(clipboard.asText = urlBox.text, MSG_ALREADY_CLIP, MSG_TO_CLIP);
-  if copyBtn.caption <> s then FormResize(NIL);
-except end;
+  s := copyBtn.caption;
+  try
+    copyBtn.Caption := if_(clipboard.asText = urlBox.text, MSG_ALREADY_CLIP, MSG_TO_CLIP);
+    if copyBtn.caption <> s then
+      FormResize(NIL);
+   except
+  end;
 end; // updateCopyBtn
 
 procedure TmainFrm.timerEvent(Sender: TObject);
 var
   now_: Tdatetime;
 
-  function itsTimeFor(var t:Tdatetime):boolean;
+  function itsTimeFor(var t: TDateTime): Boolean;
   begin
   result:=(t > 0) and (t < now_);
   if result then t:=0;
   end; // itsTimeFor
 
-  procedure calculateETA(data:TconnData; current:real; leftOver:int64);
+  procedure calculateETA(data: TconnData; current: Real; leftOver: Int64);
   var
     i, n: integer;
   begin
-  data.eta.data[data.eta.idx mod ETA_FRAME]:=current;
-  inc(data.eta.idx);
+    data.eta.data[data.eta.idx mod ETA_FRAME]:=current;
+    inc(data.eta.idx);
 
-  data.averageSpeed:=0;
-  n:=min(data.eta.idx, ETA_FRAME);
-  for i:=0 to n-1 do
-    data.averageSpeed:=data.averageSpeed+data.eta.data[i];
-  data.averageSpeed:=data.averageSpeed/n;
+    data.averageSpeed:=0;
+    n := min(data.eta.idx, ETA_FRAME);
+    for i:=0 to n-1 do
+      data.averageSpeed := data.averageSpeed+data.eta.data[i];
+    data.averageSpeed := data.averageSpeed/n;
 
-  if data.averageSpeed > 0 then
-    data.eta.result:=(leftOver/data.averageSpeed)/SECONDS;
+    if data.averageSpeed > 0 then
+      data.eta.result := (leftOver/data.averageSpeed)/SECONDS;
   end; // calculateETA
 
   procedure every10minutes();
@@ -4075,6 +4268,7 @@ var
       autoCheckUpdates();
   // purge icons older than 5 minutes, because sometimes icons change
     iconsCache.purge(now_-(5*60)/SECONDS);
+    updateCurrentCFG();
   end; // everyMinute
 
   procedure every10sec();
@@ -4105,7 +4299,8 @@ var
               setDefaultIP(ss[ if_(ss[0]=defaultIP, 1, 0) ]);
           end;;
       end;
-
+    if prevThemeDark <> IsSystemDarkTheme then
+      SetLogTheme(False, not prevThemeDark);
   end; // every10sec
 
   procedure everySec();
@@ -4127,7 +4322,7 @@ var
 
   begin
     // this is a already done in utilLib initialization, but it's a workaround to http://www.rejetto.com/forum/?topic=7724
-      FormatSettings.decimalSeparator:='.';
+    FormatSettings.decimalSeparator:='.';
     // check if the window is outside the visible screen area
     outside:=left;
     if assigned(monitor) then  // checking here because the following line once thrown this AV http://www.rejetto.com/forum/?topic=5568
@@ -4142,13 +4337,14 @@ var
 
     if dyndns.active and (dyndns.url > '') then
       begin
-      if externalIP = '' then
-        getExternalAddress(externalIP);
-      if not isLocalIP(externalIP) and (externalIP <> dyndns.lastIP)
-      or (now()-dyndns.lastTime > 24) then
-        updateDynDNS();
-      // the action above takes some time, and it can happen we asked to quit in the meantime
-      if quitting then exit;
+        if externalIP = '' then
+          getExternalAddress(externalIP);
+        if not isLocalIP(externalIP) and (externalIP <> dyndns.lastIP)
+        or (now()-dyndns.lastTime > 24) then
+          updateDynDNS();
+        // the action above takes some time, and it can happen we asked to quit in the meantime
+        if quitting then
+          exit;
       end;
 
     // the alt+click shortcut to get file properties will result in an unwanted editing request if the file is already selected. This is a workaround.
@@ -4159,16 +4355,16 @@ var
 
     if warnManyItems and (filesBox.items.count > MANY_ITEMS_THRESHOLD) then
       begin
-      warnManyItems := FALSE;
-      msgDlg(MSG_MANY_ITEMS, MB_ICONWARNING);
+        warnManyItems := FALSE;
+        msgDlg(MSG_MANY_ITEMS, MB_ICONWARNING);
       end;
 
     with autosaveVFS do // we do it only if the filename is already specified
       if (every > 0) and (lastFileOpen > '') and not loadingVFS.disableAutosave
       and ((now_-last)*SECONDS >= every) then
         begin
-        last:=now_;
-        saveVFS(lastFileOpen);
+          last:=now_;
+          saveVFS(lastFileOpen);
         end;
 
     if assigned(srv) and assigned(srv.conns)
@@ -4223,7 +4419,6 @@ var
 
     updateCopyBtn();
     keepTplUpdated(fileSrv);
-    updateCurrentCFG();
     loadEvents();
 
     if assigned(runScriptFrm) and runScriptFrm.visible
@@ -4261,33 +4456,33 @@ var
   begin
     purgeConnections();
 
-  // see the filesBoxEditing event for an explanation of the following lines
-  if not filesBox.IsEditing and (remove1.ShortCut = 0) then
-    begin
-    remove1.ShortCut := TextToShortCut('Del');
-    Paste1.ShortCut := TextToShortCut('Ctrl+V');
-    copyURL1.ShortCut := TextToShortCut('Ctrl+C');
-    end;
+    // see the filesBoxEditing event for an explanation of the following lines
+    if not filesBox.IsEditing and (remove1.ShortCut = 0) then
+      begin
+        remove1.ShortCut := TextToShortCut('Del');
+        Paste1.ShortCut := TextToShortCut('Ctrl+V');
+        copyURL1.ShortCut := TextToShortCut('Ctrl+C');
+      end;
 
-  with optionsFrm do
-    if active and iconsPage.visible then
-      updateIconMap();
+    with optionsFrm do
+      if active and iconsPage.visible then
+        updateIconMap();
 
-  if scrollFilesBox in [SB_LINEUP,SB_LINEDOWN] then
-    postMessage(filesBox.Handle, WM_VSCROLL, scrollFilesBox, 0);
+    if scrollFilesBox in [SB_LINEUP,SB_LINEDOWN] then
+      postMessage(filesBox.Handle, WM_VSCROLL, scrollFilesBox, 0);
 
-  if assigned(filesToAddQ) then
-    begin
-    f := fileSrv.findFilebyURL(addToFolder);
-    if f = NIL then
-      f:=selectedFile;
-    if f = NIL then
-      n:=NIL
-    else
-      n:=f.node;
-    addFilesFromString(join(CRLF, filesToAddQ), n);
-    filesToAddQ:=NIL;
-    end;
+    if assigned(filesToAddQ) then
+      begin
+        f := fileSrv.findFilebyURL(addToFolder);
+        if f = NIL then
+          f := selectedFile;
+        if f = NIL then
+          n := NIL
+        else
+          n := f.node;
+        addFilesFromString(join(CRLF, filesToAddQ), n);
+        filesToAddQ := NIL;
+      end;
 
     if itsTimeFor(searchLogTime) then
       if searchLog(0) then
@@ -4422,14 +4617,14 @@ begin
   pn:=0;
   if not easyMode then
     addPanel( getConnectionsString() );
-  sbarIdxs.out := addPanel( format(MSG_OUT_SPEED,[srv.speedOut/1000]) );
-  addPanel( format(MSG_IN_SPEED,[srv.speedIn/1000]) );
+  sbarIdxs.out := addPanel( format(MSG_OUT_SPEED,[fileSrv.getSpeed(ST_OUTCOME)/1000]) );
+  addPanel( format(MSG_IN_SPEED,[fileSrv.getSpeed(ST_INCOME)/1000]) );
   if not easyMode then
     begin
       sbarIdxs.totalOut:=addPanel( format(MSG_TOT_OUT,[
-        smartSize(outTotalOfs+srv.bytesSent)]) );
+        smartSize(outTotalOfs+fileSrv.getBytes(ST_OUTCOME))]) );
       sbarIdxs.totalIn:=addPanel( format(MSG_TOT_IN,[
-        smartSize(inTotalOfs+srv.bytesReceived)]) );
+        smartSize(inTotalOfs+fileSrv.getBytes(ST_INCOME))]) );
       sbarIdxs.notSaved := addPanel( format(if_(VFSmodified, MSG_ITEMS_NS, MSG_VFS_ITEMS),[filesBox.items.count-1]));
       if not vFsmodified then
         sbarIdxs.notSaved:=-1;
@@ -4513,15 +4708,6 @@ begin
   updateUrlBox();
 end;
 
-function setBrowsable(f:Tfile; childrenDone:boolean; par, par2: IntPtr):TfileCallbackReturn;
-begin
-if not f.isFolder() then exit;
-if (FA_BROWSABLE in f.flags) = boolean(par) then VFSmodified:=TRUE
-else exit;
-if boolean(par) then exclude(f.flags, FA_BROWSABLE)
-else include(f.flags, FA_BROWSABLE);
-end; // setBrowsable
-
 procedure fileMenuSetFlag(sender: Tobject; flagToSet: TfileAttribute; filter: TfilterMethod=NIL;
                           negateFilter: boolean=FALSE; recursive: boolean=FALSE; f: Tfile=NIL);
 // parameter "f" is designed to be set only inside this function
@@ -4545,10 +4731,7 @@ var
     if (flagToSet in f.flags) = newState then
       exit;
     VFSmodified := TRUE;
-    if newState then
-      include(f.flags, flagToSet)
-     else
-      exclude(f.flags, flagToSet);
+    f.setAttr(flagToSet, newState)
   end; // applyTo
 
 var
@@ -4575,35 +4758,37 @@ begin
 end;
 
 procedure TmainFrm.filesBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-begin filesBox.Selected:=filesBox.GetNodeAt(x,y) end;
+begin
+  filesBox.Selected:=filesBox.GetNodeAt(x,y)
+end;
 
-procedure setFilesBoxExtras(v:boolean);
+procedure setFilesBoxExtras(fb: TTreeView; v:boolean);
 begin
 { let disable this silly feature for now
-if winVersion <> WV_VISTA then exit;
-with mainfrm.filesBox do
+if winVersion <> WV_VISTA then exit;}
+with fb do
   begin
   if isEditing then exit;
   ShowButtons:=v;
   ShowLines:=v;
-  end;}
+  end;
 end; // setFilesBoxExtras
 
 procedure TmainFrm.filesBoxMouseEnter(Sender: TObject);
 begin
-with filesBox do setFilesBoxExtras(TRUE);
+  setFilesBoxExtras(filesBox, TRUE);
 end;
 
 procedure TmainFrm.filesBoxMouseLeave(Sender: TObject);
 begin
-with filesBox do setFilesBoxExtras(focused);
+  setFilesBoxExtras(filesBox, filesBox.focused);
 end;
 
 procedure TmainFrm.filesBoxMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Integer);
 begin
-if (shift = [ssAlt]) and (button = mbLeft) then
-  Properties1.click();
+  if (shift = [ssAlt]) and (button = mbLeft) then
+    Properties1.click();
 end;
 
 procedure TmainFrm.filesBoxCompare(Sender: TObject; Node1, Node2: TTreeNode;
@@ -4638,26 +4823,30 @@ end;
 
 procedure browse(url:string);
 begin
-if mainfrm.browseUsingLocalhostChk.Checked then
-  begin
-  chop('//',url);
-  chop('/',url);
-  url:='http://localhost:'+srv.port+'/'+url;
-  end;
-openURL(url);
+  if mainfrm.browseUsingLocalhostChk.Checked then
+   begin
+    chop('//', url);
+    chop('/', url);
+    url := 'http://localhost:' + srv.port+'/'+url;
+   end;
+  openURL(url);
 end; // browse
 
 procedure TmainFrm.Browseit1Click(Sender: TObject);
 begin
-if selectedFile = NIL then exit;
-if selectedFile.isLink() then openURL(fileSrv.url(selectedfile))
-else browse(fileSrv.fullURL(selectedfile))
+  if selectedFile = NIL then
+    exit;
+  if selectedFile.isLink() then
+    openURL(fileSrv.url(selectedfile))
+   else
+    browse(fileSrv.fullURL(selectedfile))
 end;
 
 procedure TmainFrm.Openit1Click(Sender: TObject);
 begin
-if selectedFile = NIL then exit;
-exec('"'+selectedfile.resource+'"')
+  if selectedFile = NIL then
+    exit;
+  exec('"'+selectedfile.resource+'"')
 end;
 
 procedure TmainFrm.openLogBtnClick(Sender: TObject);
@@ -4675,7 +4864,7 @@ begin
       for i:=0 to logBox.Lines.Count-1 do
         if filematch('*'+mask+'*', logbox.lines[i]) then
           s.append(logBox.lines[i]+CRLF);
-    if s.length() = 0 then
+    if s.length = 0 then
      begin
       msgDlg('It''s empty', MB_ICONWARNING);
       exit;
@@ -4787,7 +4976,7 @@ begin
          end;
 
         if kind = 'virtual' then
-          include(f.flags, FA_VIRTUAL);
+          f.setAttr(FA_VIRTUAL, True)
        end;
 
       f.lock();
@@ -4838,9 +5027,9 @@ end; // addDropFiles
 
 procedure Tmainfrm.WMDropFiles(var msg: TWMDropFiles);
 begin
-with filesBox.screenToClient(mouse.cursorPos) do
-  addDropFiles(msg.Drop, filesBox.getNodeAt(x,y));
-inherited;
+  with filesBox.screenToClient(mouse.cursorPos) do
+    addDropFiles(msg.Drop, filesBox.getNodeAt(x,y));
+  inherited;
 end; // WMDropFiles
 
 procedure Tmainfrm.WMQueryEndSession(var msg:TWMQueryEndSession);
@@ -4867,12 +5056,27 @@ end; // WMEndSession
 
 procedure TmainFrm.WMNCLButtonDown(var msg:TWMNCLButtonDown);
 begin
-if (msg.hitTest = windows.HTCLOSE) and trayInsteadOfQuitChk.checked then
+  if (msg.hitTest = windows.HTCLOSE) and trayInsteadOfQuitChk.checked then
+    begin
+    msg.hitTest := windows.HTCAPTION; // cancel closing
+    minimizeToTray();
+    end;
+  inherited;
+end;
+
+procedure TmainFrm.WMSettingChange(var Message: TMessage);
+begin
+  // Changed Windows color scheme
+  if (PChar(Message.LParam) <> nil) and
+     (SameText(PChar(Message.LParam), 'ImmersiveColorSet') or
+      SameText(PChar(Message.LParam), 'WindowsThemeElement')) then
   begin
-  msg.hitTest:=windows.HTCAPTION; // cancel closing
-  minimizeToTray();
+    //if LogThemeMode = ltmSystem then
+      //ApplyLogTheme;
+    prevThemeDark := IsSystemDarkTheme;
+    SetLogTheme(False, prevThemeDark);
   end;
-inherited;
+  inherited;
 end;
 
 procedure TmainFrm.splitVMoved(Sender: TObject);
@@ -5002,7 +5206,7 @@ procedure TmainFrm.appEventsShowHint(var HintStr: String; var CanShow: Boolean; 
 
   function connHint(): String;
   var
-    cd: TconnData;
+    cd: TconnDataMain;
     st: string;
   begin
     cd := pointedConnection(HintInfo.CursorPos);
@@ -5054,19 +5258,19 @@ end;
 
 procedure TmainFrm.logmenuPopup(Sender: TObject);
 begin
-Readonly1.Checked:=True; //logBox.ReadOnly;
-Readonly1.visible:=not easyMode;
-//Banthisaddress1.visible:= ipPointedInLog() > '';
-Address2name1.visible:=not easyMode;
-Logfile1.visible:=not easyMode;
-logOnVideoChk.visible:=not easyMode;
-Donotlogaddress1.visible:=not easyMode;
-Clearandresettotals1.visible:=not easyMode;
-Addresseseverconnected1.visible:=not easyMode;
-Maxlinesonscreen1.visible:=not easyMode;
-Dontlogsomefiles1.visible:=not easyMode;
-Apachelogfileformat1.visible:=not easyMode and (logfile.filename>'');
-tabOnLogFileChk.Visible:=not easyMode and (logfile.filename>'');
+  Readonly1.Checked := True; //logBox.ReadOnly;
+  Readonly1.visible := not easyMode;
+  Banthisaddress1.visible := ipPointedInLog() > '';
+  Address2name1.visible := not easyMode;
+  Logfile1.visible := not easyMode;
+  logOnVideoChk.visible:=not easyMode;
+  Donotlogaddress1.visible:=not easyMode;
+  Clearandresettotals1.visible:=not easyMode;
+  Addresseseverconnected1.visible:=not easyMode;
+  Maxlinesonscreen1.visible:=not easyMode;
+  Dontlogsomefiles1.visible:=not easyMode;
+  Apachelogfileformat1.visible:=not easyMode and (logfile.filename>'');
+  tabOnLogFileChk.Visible:=not easyMode and (logfile.filename>'');
 end;
 
 function Tmainfrm.searchLog(dir:integer):boolean;
@@ -5131,9 +5335,9 @@ end;
 
 procedure TmainFrm.logSearchBoxChange(Sender: TObject);
 begin
-// from when he stopped typing, wait twice the time of a searching, but max 2 seconds
-searchLogTime:=now()+min(timeTookToSearchLog*2, 2/SECONDS);
-openFilteredLog.Enabled:=logSearchBox.Text > '';
+  // from when he stopped typing, wait twice the time of a searching, but max 2 seconds
+  searchLogTime:=now()+min(timeTookToSearchLog*2, 2/SECONDS);
+  openFilteredLog.Enabled:=logSearchBox.Text > '';
 end;
 
 procedure TmainFrm.logSearchBoxKeyPress(Sender: TObject; var Key: Char);
@@ -5146,7 +5350,9 @@ if key = #13 then
 end;
 
 procedure TmainFrm.logUpDownClick(Sender: TObject; Button: TUDBtnType);
-begin searchLog(if_(button = btNext, -1, +1)) end;
+begin
+  searchLog(if_(button = btNext, -1, +1))
+end;
 
 procedure TmainFrm.Readonly1Click(Sender: TObject);
 begin
@@ -5154,16 +5360,30 @@ begin
 end;
 
 procedure TmainFrm.Clear1Click(Sender: TObject);
-const
-  BaseHTML =
-    '<html><head><style>' +
-    'body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }' +
-    '.log-msg { border-bottom: 1px dashed #eee; padding: 3px 0; }' +
-    '.time { color: #888; font-family: monospace; margin-right: 6px; }' +
-    '</style></head><body id="log"></body></html>';
 begin
+  if not Assigned(LogBrowser) then
+    Exit;
   // Загружаем базовую структуру лога
-  LogBrowser.LoadHtml(BaseHTML, '\');
+  //LogBrowser.LoadHtml(BaseHTML, '\');
+  LogBrowser.Call('clearLog', []);
+end;
+
+// При смене темы (из настроек / меню)
+procedure TmainFrm.SetLogTheme(isSystem, Dark: Boolean);
+begin
+  if not Assigned(LogBrowser) then
+    Exit;
+  if not FIsBrowserReady then
+    Exit;
+  prevThemeDark := IsSystemDarkTheme;
+  if isSystem then
+    // Следовать системе
+    //LogBrowser.Call('setTheme', ['system'])
+    LogBrowser.Call('setTheme', [if_(prevThemeDark, 'dark', 'light')])
+  else if Dark then
+    LogBrowser.Call('setTheme', ['dark'])
+  else
+    LogBrowser.Call('setTheme', ['light']);
 end;
 
 procedure TmainFrm.Clearandresettotals1Click(Sender: TObject);
@@ -5200,21 +5420,23 @@ end;
 
 procedure deleteCFG();
 begin
-deleteFile(lastUpdateCheckFN);
-deleteFile(cfgPath+CFG_FILE);
-deleteRegistry(CFG_KEY);
-deleteRegistry(CFG_KEY, HKEY_LOCAL_MACHINE);
+  deleteFile(lastUpdateCheckFN);
+  deleteFile(cfgPath+CFG_FILE);
+  deleteRegistry(CFG_KEY);
+  deleteRegistry(CFG_KEY, HKEY_LOCAL_MACHINE);
 end; // deleteCFG
 
 procedure TmainFrm.Clearoptionsandquit1click(Sender: TObject);
 begin
-deleteCFG();
-autoSaveOptionsChk.Checked:=FALSE;
-close();
+  deleteCFG();
+  autoSaveOptionsChk.Checked:=FALSE;
+  close();
 end;
 
 procedure TmainFrm.collapseBtnClick(Sender: TObject);
-begin setLogToolbar(FALSE) end;
+begin
+  setLogToolbar(FALSE)
+end;
 
 function ListView_GetSubItemRect(lv: TlistView; iItem, iSubItem: Integer): Trect;
 const
@@ -5273,7 +5495,7 @@ var
       cnv.LineTo(r1.Left-1, r1.Bottom);
       end;
     if upperbound > 0 then
-      dec( r1.Right, round(x*(total-upperbound)/total) );
+      dec( r1.Right, round(x- (x/total) * upperbound) );
     // border + non filled part
     cnv.brush.Color := colors[not selected];
     cnv.Brush.Style := bsSolid;
@@ -5313,6 +5535,7 @@ end;
 procedure TmainFrm.connBoxData(Sender: TObject; Item: TListItem);
 var
   data: TconnData;
+  changed: Boolean;
 
   function getFname(): String;
   begin
@@ -5359,6 +5582,7 @@ var
     if item.subItems.Count > itemIndex then
      if item.subItems[itemIndex] <> val then
       begin
+        changed := True;
         item.subItems[itemIndex] := val;
       end;
   end;
@@ -5633,6 +5857,7 @@ begin
   ppi := Self.CurrentPPI;
  {$ENDIF FPC}
   //logBox.Font.PixelsPerInch := ppi;
+  MaybeInitLogBrowser;
  {$IFNDEF FPC}
   IconsDM.images.SetSize(MulDiv(16, ppi, 96), MulDiv(16, ppi, 96));
  {$ENDIF FPC}
@@ -5985,7 +6210,7 @@ begin
   addresses:=NIL;
   for i:=0 to fileSrv.getConnectionsCount-1 do
    with fileSrv.conn2data(i) do
-    if countConnectionsByIP(address) > maxConnectionsIP then
+    if countConnectionsByIP(fileSrv.htSrv, address) > maxConnectionsIP then
       addUniqueString(address, addresses);
   if assigned(addresses) then
     msgDlg(format(MSG_ADDRESSES_EXCEED,[join(#13, addresses)]), MB_ICONWARNING);
@@ -6172,22 +6397,25 @@ var
   user, pwd: string;
   f: Tfile;
 begin
-if selectedFile = NIL then exit;
-if fileAttributeInSelection(FA_LINK)
-and (msgDlg(MSG_UNPROTECTED_LINKS, MB_ICONWARNING+MB_YESNO) <> IDYES) then exit;
-user:=selectedFile.user;
-pwd:=selectedFile.pwd;
-if not newuserpassFrm.prompt(user, pwd) then exit;
-for i:=0 to filesBox.SelectionCount-1 do
-  begin
-  f := filesBox.Selections[i].data;
-  usersInVFS.drop(f.user, f.pwd);
-  f.user:=user;
-  f.pwd:=pwd;
-  usersInVFS.track(f.user, f.pwd);
-  end;
-filesBox.Repaint();
-VFSmodified:=TRUE;
+  if selectedFile = NIL then
+    exit;
+  if fileAttributeInSelection(FA_LINK)
+     and (msgDlg(MSG_UNPROTECTED_LINKS, MB_ICONWARNING+MB_YESNO) <> IDYES) then
+    exit;
+  user := selectedFile.user;
+  pwd := selectedFile.pwd;
+  if not newuserpassFrm.prompt(user, pwd) then
+    exit;
+  for i:=0 to filesBox.SelectionCount-1 do
+    begin
+    f := filesBox.Selections[i].data;
+    usersInVFS.drop(f.user, f.pwd);
+    f.user:=user;
+    f.pwd:=pwd;
+    usersInVFS.track(f.user, f.pwd);
+    end;
+  filesBox.Repaint();
+  VFSmodified:=TRUE;
 end;
 
 procedure TmainFrm.browseBtnClick(Sender: TObject);
@@ -6284,7 +6512,12 @@ begin
           end;
         try
           initVFS();
-          fileSrv.setVFSJZ(data2, NIL, onLoadVFSprogress);
+          try
+            fileSrv.setVFSJZ(data2, NIL, onLoadVFSprogress);
+           except
+            on e:exception do
+              msgDlg('Error loading VFS: '+ e.Message);
+          end;
           if loadingVFS.useBackup and restoreBak(data2) then
             begin
             initVFS();
@@ -6307,7 +6540,7 @@ begin
             end;
         end;
        finally
-        reenableUserInteraction();
+        reEnableUserInteraction();
         progFrm.hide();
         filesBox.show();
       end;
@@ -6332,7 +6565,7 @@ begin
       if loadingVFS.disableAutosave and anyAutosavingFeatureEnabled() then
         msgDlg(MSG_AUTO_DISABLED, MB_ICONWARNING, MSG_LOADING_VFS);
 
-      setStatusBarText(format('Loaded in %.1f seconds (%s)', [took*SECONDS,fn]), 10);
+      setStatusBarText(format('Loaded in %.1f seconds (%s)', [took*SECONDS, fn]), 10);
     end
    else
     begin
@@ -6414,10 +6647,10 @@ end;
 
 procedure Tmainfrm.popupMainMenu();
 begin
-  menuBtn.Down:=TRUE;
+  menuBtn.Down := TRUE;
   with menuBtn.clientToScreen(point(0,menuBtn.height)) do
     menu.popup(x,y);
-  menuBtn.Down:=FALSE;
+  menuBtn.Down := FALSE;
 end;
 
 procedure TmainFrm.portBtnClick(Sender: TObject);
@@ -6434,7 +6667,7 @@ begin
         msgDlg('Numbers only', MB_ICONERROR);
         continue;
       end;
-    if changePort(s) then
+    if changePort(srv, s) then
       exit;
     sayPortBusy(s);
   until FALSE;
@@ -6442,8 +6675,10 @@ end;
 
 procedure Tmainfrm.updateAlwaysOnTop();
 begin
-if alwaysOnTopchk.checked then FormStyle:=fsStayOnTop
-else formStyle:=fsNormal
+  if alwaysOnTopchk.checked then
+    FormStyle:=fsStayOnTop
+   else
+    formStyle:=fsNormal
 end; // updateAlwaysOnTop
 
 procedure TmainFrm.updateBtnClick(Sender: TObject);
@@ -6464,8 +6699,16 @@ begin
     setNewTplFile(tplFilename);
 end;
 
+procedure TmainFrm.ChangeNoMacrosfile1Click(Sender: TObject);
+begin
+  if selectFile(tplNoMacrosFN, 'Change template without macroses file', 'Template without macroses file|*.tpl', [ofPathMustExist, ofCreatePrompt]) then
+    setNewNMTplFile(tplNoMacrosFN);
+end;
+
 procedure TmainFrm.Changeport1Click(Sender: TObject);
-begin portBtnClick(portBtn) end;
+begin
+  portBtnClick(portBtn)
+end;
 
 procedure TmainFrm.Checkforupdates1Click(Sender: TObject);
 var
@@ -6480,15 +6723,15 @@ begin
   end;
 
   if info = NIL then
-  begin
+   begin
     msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
     exit;
-  end;
+   end;
 
   try
     msgDlg(format(MSG_UPD_INFO, [ info['last stable'], first([info['last untested'],'none']) ]));
 
-    updateURL:='';
+    updateURL := '';
     if trim(info['last stable build']) > VERSION_BUILD then
       begin
         msgDlg(format(MSG_NEWER,[info['last stable']]));
@@ -6496,11 +6739,11 @@ begin
       end
      else
       if (not VERSION_STABLE or testerUpdatesChk.checked)
-         and (trim(info['last untested build']) > VERSION_BUILD) then
-        begin
-          msgDlg(format(MSG_NEWER,[info['last untested']]));
-          updateURL:=trim(info['last untested url']);
-        end;
+      and (trim(info['last untested build']) > VERSION_BUILD) then
+       begin
+        msgDlg(format(MSG_NEWER,[info['last untested']]));
+        updateURL:=trim(info['last untested url']);
+       end;
 
     msgDlg(info['notice'], MB_ICONWARNING);
     parseVersionNotice(info['version notice']);
@@ -6538,25 +6781,28 @@ procedure TmainFrm.noDownloadtimeout1Click(Sender: TObject);
 var
   s:string;
 begin
-if noDownloadTimeout > 0 then s:=intToStr(noDownloadTimeout)
-else s:='';
-if inputquery(MSG_DL_TIMEOUT, MSG_DL_TIMEOUT_LONG, s) then
-	try setnoDownloadTimeout(strToUInt(s))
-  except msgDlg(MSG_INVALID_VALUE, MB_ICONERROR)
-  end;
+  if noDownloadTimeout > 0 then
+    s:=intToStr(noDownloadTimeout)
+   else
+    s:='';
+  if inputquery(MSG_DL_TIMEOUT, MSG_DL_TIMEOUT_LONG, s) then
+    try
+      setnoDownloadTimeout(strToUInt(s))
+     except
+      msgDlg(MSG_INVALID_VALUE, MB_ICONERROR)
+    end;
 end;
 
 procedure Tmainfrm.initVFS();
 begin
-  uploadPaths := NIL;
-  fileSrv.clearNodes;
-  fileSrv.initRootWithNode;
-  VFSmodified := FALSE;
+  fileSrv.initVFS;
   lastFileOpen := '';
 end; // initVFS
 
 procedure TmainFrm.alwaysontopChkClick(Sender: TObject);
-begin updateAlwaysOnTop() end;
+begin
+  updateAlwaysOnTop()
+end;
 
 procedure TmainFrm.hideGraph();
 begin
@@ -6580,19 +6826,21 @@ procedure TmainFrm.Pause1Click(Sender: TObject);
 var
   cd: TconnData;
 begin
-cd:=selectedConnection();
-if cd = NIL then exit;
-with cd.conn do paused:=not paused;
+  cd := selectedConnection();
+  if cd = NIL then
+    exit;
+  with cd.conn do
+    paused := not paused;
 end;
 
 procedure TmainFrm.MIMEtypes1Click(Sender: TObject);
 begin
-  showOptions(optionsFrm.mimePage, mainfrm.modalOptionsChk.checked)
+  showOptions(optionsFrm.mimePage, modalOptionsChk.checked)
 end;
 
 procedure TmainFrm.accounts1Click(Sender: TObject);
 begin
-  showOptions(optionsFrm.accountsPage, mainfrm.modalOptionsChk.checked)
+  showOptions(optionsFrm.accountsPage, modalOptionsChk.checked)
 end;
 
 procedure TmainFrm.CopyURL1Click(Sender: TObject);
@@ -6615,24 +6863,27 @@ var
   user, pwd: string;
   f: Tfile;
 begin
-if selectedFile = NIL then exit;
-user:=(sender as Tmenuitem).caption;
-delete(user, pos('&',user), 1);
+  if selectedFile = NIL then
+    exit;
+  user:=(sender as Tmenuitem).caption;
+  delete(user, pos('&',user), 1);
 // protection may have been inherited
-f:=selectedFile;
-while assigned(f) and (f.accounts[FA_ACCESS] = NIL) and (f.user = '') do
-  f:=f.parent;
+  f := selectedFile;
+  while assigned(f) and (f.accounts[FA_ACCESS] = NIL) and (f.user = '') do
+    f:=f.parent;
 
-if assigned(f) and (f.user = user) then
-  pwd:=f.pwd
-else
-  begin
-  a:=getAccount(user);
-  if assigned(a) then pwd:=a.pwd
-  else pwd:='';
-  end;
+  if assigned(f) and (f.user = user) then
+    pwd:=f.pwd
+   else
+    begin
+      a:=getAccount(user);
+      if assigned(a) then
+       pwd:=a.pwd
+      else
+       pwd:='';
+    end;
 
-setClip( fileSrv.fullURL(selectedFile,'',user,pwd) )
+  setClip( fileSrv.fullURL(selectedFile,'',user,pwd) )
 end; // copyURLwithPasswordMenuClick
 
 procedure Tmainfrm.copyURLwithAddressMenuClick(sender:Tobject);
@@ -6712,7 +6963,7 @@ begin
   fileNameChanged := False;
   if fn = '' then
    begin
-    fn:=lastFileOpen;
+    fn := lastFileOpen;
     if not promptForFileName(fn, 'VirtualFileSystem|*.vfs|VirtualFileSystem JSON Zipped|*.vfsjz', 'vfs', 'Save VFS', '', TRUE) then
       exit;
     fileNameChanged := True;
@@ -6773,23 +7024,58 @@ begin
  {$ENDIF ~FPC}
 end;
 
+procedure TmainFrm.SafeFreeLogBrowser;
+begin
+  if not Assigned(LogBrowser) then
+    Exit;
+
+  try
+    // 1. Убрать ссылки из своего кода
+    FIsBrowserReady := False;
+
+    // 2. Выгрузить документ (освобождает JS/DOM внутри движка)
+    try
+      //LogBrowser.LoadHtml('<html><body></body></html>', 'about:blank');
+      LogBrowser.LoadHtml('', '');
+      // или LoadURL('about:blank')
+    except
+    end;
+
+    // 3. Отвязать от parent, чтобы LCL не слал ему сообщения
+    LogBrowser.Parent := nil;
+    LogBrowser.PopupMenu := nil;
+
+    // 4. Дать очереди сообщений «дожевать» UAH/NCDESTROY
+    Application.ProcessMessages;
+
+    // 5. Только теперь Free
+    FreeAndNil(LogBrowser);
+  except
+    on E: Exception do
+      // залогировать, не ронять приложение
+      OutputDebugString(PChar('LogBrowser free: ' + E.Message));
+  end;
+end;
+
 procedure TmainFrm.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
-  quitting:=TRUE;
+  quitting := TRUE;
   if applicationFullyInitialized then
   begin
-    runEventScript(fileSrv, 'quit');
+    fileSrv.runEventScript('quit');
     timer.enabled:=FALSE;
     if autosaveOptionsChk.checked and not cfgLoaded then
       saveCFG();
   end;
+
 // we disconnectAll() before srv.free, so we can purgeConnections()
   if assigned(srv) then
     srv.disconnectAll(TRUE);
   purgeConnections();
-  freeAndNIL(srv);
+  //freeAndNIL(srv);
   freeAndNIL(tray);
   freeAndNIL(tray_ico);
+  SafeFreeLogBrowser;
 end;
 
 procedure TmainFrm.Logfile1Click(Sender: TObject);
@@ -6801,16 +7087,16 @@ procedure TmainFrm.Font1Click(Sender: TObject);
 var
   dlg: TFontDialog;
 begin
-dlg:=TFontDialog.Create(NIL);
-dlg.Font.name:=logFontName;
-dlg.Font.size:=logFontSize;
-if dlg.Execute then
-  begin
-  //logBox.font.Assign(dlg.Font);
-  logFontName:=dlg.Font.Name;
-  logFontSize:=dlg.Font.size;
-  end;
-dlg.free;
+  dlg := TFontDialog.Create(NIL);
+  dlg.Font.name := logFontName;
+  dlg.Font.size := logFontSize;
+  if dlg.Execute then
+    begin
+    //logBox.font.Assign(dlg.Font);
+    logFontName := dlg.Font.Name;
+    logFontSize := dlg.Font.size;
+    end;
+  dlg.free;
 end;
 
 procedure TmainFrm.SetURL1Click(Sender: TObject);
@@ -6844,14 +7130,17 @@ var
 begin
   if filesBox.SelectionCount > 0 then
     for i:=0 to filesBox.SelectionCount-1 do
-  begin
-  f := filesBox.Selections[i].data;
-  usersInVFS.drop(f.user, f.pwd);
-  f.user:='';
-  f.pwd:='';
-  end;
-VFSmodified:=TRUE;
-filesBox.Repaint();
+      begin
+        f := nodeToFile(filesBox.Selections[i]);
+        if f <> NIL then
+          begin
+            usersInVFS.drop(f.user, f.pwd);
+            f.user:='';
+            f.pwd:='';
+          end;
+      end;
+  VFSmodified := TRUE;
+  filesBox.Repaint();
 end;
 
 procedure TmainFrm.Switchtovirtual1Click(Sender: TObject);
@@ -6869,7 +7158,7 @@ begin
   nodes := copySelection();
 
   addingItemsCounter := 0;
-  sysIcons := mainfrm.useSystemIconsChk.checked;
+  sysIcons := useSystemIconsChk.checked;
   try
     someLocked := FALSE;
     for i:=0 to length(nodes)-1 do
@@ -6883,7 +7172,7 @@ begin
                 bakIcon:=icon;
                 f := Tfile.create(fileSrv, resource);
                 under:=node.Parent;
-                include(f.flags, FA_VIRTUAL);
+                f.setAttr(FA_VIRTUAL, True);
                 setNilChildrenFrom(nodes, i);
                 node.Delete();
                 addFile(f, under, TRUE);
@@ -6925,23 +7214,87 @@ try
 finally queryingClose:=FALSE end;
 end;
 
-procedure TmainFrm.FormCreate(Sender: TObject);
+procedure TmainFrm.setTheme(const pThemeName: String; pForce: Boolean = false);
+var
+  lNewThemeSelected: String;
+begin
+{  lNewThemeSelected := '';
+      if pThemeName = 'Auto' then
+        begin
+          lNewThemeSelected := pThemeName;
+          themeSelected := lNewThemeSelected;
+          HandleThemes;
+        end
+       else
+      if (pThemeName = '') or (pThemeName = 'Windows') then
+        begin
+          if TStyleManager.TrySetStyle(TStyleManager.SystemStyleName) then
+            begin
+              lNewThemeSelected := 'Windows';
+            end;
+        end
+       else
+        begin
+          if TStyleManager.TrySetStyle(pThemeName) then
+            begin
+              lNewThemeSelected := pThemeName;
+            end;
+        end;
+  if (lNewThemeSelected <> '') or pForce then
+    begin
+     themeSelected := lNewThemeSelected;
+     for var mm in ThemesSepMnu.Parent do
+       begin
+         if ReplaceStr(mm.Caption, '&', '') = themeSelected then
+           mm.Checked := True;
+       end;
+    end;
+}
+  SetLogTheme(True, True);
+end;
+
+procedure TmainFrm.MaybeInitLogBrowser;
 var
   baseHTML: UnicodeString;
 begin
-  FIsBrowserReady := False;
+  if FIsBrowserReady then
+    Exit;
+  if not Assigned(LogBrowser) then
+    Exit;
+  if (LogBrowser.ClientWidth < 2) or (LogBrowser.ClientHeight < 2) then Exit;
 
   baseHTML := UTF8ToStr(getResText('log'));
+  if baseHTML = '' then
+    raise Exception.Create('Resource "log" is not found!');
 
-  LogBrowser := TSciter.Create(logPnl);
-  LogBrowser.Parent := logPnl;
-  LogBrowser.Align := alClient;
-  LogBrowser.PopupMenu := logmenu;
-  // Set empty start page
-  LogBrowser.SetHomeURL('about:blank');
-// Load base HTML into sciter
   LogBrowser.LoadHtml(BaseHTML, 'about:blank');
   FIsBrowserReady := True;
+  SetLogTheme(True, True);
+end;
+
+procedure TmainFrm.FormCreate(Sender: TObject);
+//var
+  //baseHTML: UnicodeString;
+begin
+  FIsBrowserReady := False;
+
+  LogBrowser := TSciter.Create(logPnl);
+  LogBrowser.Align := alClient;
+  LogBrowser.BorderStyle := bsNone;    // если свойство есть
+  LogBrowser.Parent := logPnl;
+  LogBrowser.TabStop := True;
+  LogBrowser.PopupMenu := logmenu;
+
+  LogBrowser.Constraints.MinHeight := 50;
+  LogBrowser.Constraints.MinWidth  := 50;
+  logPnl.Constraints.MinHeight := 50;
+
+// Set empty start page
+  LogBrowser.SetHomeURL('about:blank');
+// Load base HTML into sciter
+  //LogBrowser.LoadHtml(BaseHTML, 'about:blank');
+  //SetLogTheme(True, True);
+  //FIsBrowserReady := True;
 
   screen.onActiveFormChange := wrapInputQuery;
   easyMode := TRUE;
@@ -6969,6 +7322,7 @@ begin
   encodenonasciiChk.OnClick := onShowPrefsChange;
   encodeSpacesChk.OnClick := onShowPrefsChange;
   compressedbrowsingChk.OnClick := onShowPrefsChange;
+  CompressZIPstreamsChk.OnClick := onShowPrefsChange;
   sendHFSidentifierChk.OnClick := onShowPrefsChange;
   freeLoginChk.OnClick := onShowPrefsChange;
   stopSpidersChk.OnClick := onShowPrefsChange;
@@ -7019,6 +7373,12 @@ end;
 
 procedure TmainFrm.onLogPrefsChange(Sender: TObject);
 begin
+  if Sender is TMenuItem then
+    begin
+      if (Sender as TMenuItem).Hint > '' then
+        fileSrv.prefs.addPrefBool((Sender as TMenuItem).Hint, (Sender as TMenuItem).Checked)
+    end;
+
   if Assigned(fileSrv) then
     fileSrv.syncLogP;
 end;
@@ -7034,7 +7394,7 @@ begin openURL('http://www.rejetto.com/hfs/guide/intro.html') end;
 
 procedure TmainFrm.Reset1Click(Sender: TObject);
 begin
-  srvUtils.resetGraph(srv);
+  srvUtils.resetGraph(fileSrv.htSrv);
 end;
 
 procedure TmainFrm.Resetfileshits1Click(Sender: TObject);
@@ -7054,8 +7414,8 @@ end;
 
 procedure TmainFrm.persistentconnectionsChkClick(Sender: TObject);
 begin
-  srv.persistentConnections:=persistentconnectionsChk.Checked;
-  if not srv.persistentConnections then
+  fileSrv.htSrv.persistentConnections:=persistentconnectionsChk.Checked;
+  if not fileSrv.htSrv.persistentConnections then
     Kickidleconnections1Click(NIL);
 end;
 
@@ -7078,11 +7438,12 @@ end;
 procedure TmainFrm.splitHMoved(Sender: TObject);
 begin if connPnl.height > 0 then lastGoodConnHeight:=connPnl.height end;
 
-procedure TmainFrm.Clearfilesystem1Click(Sender: TObject);
+procedure TmainFrm.ClearFileSystem1Click(Sender: TObject);
 begin
-checkIfOnlyCountersChanged();
-if VFSmodified and (msgDlg(MSG_CHANGES_LOST, MB_ICONQUESTION+MB_YESNO) = IDNO) then exit;
-initVFS();
+  checkIfOnlyCountersChanged();
+  if VFSmodified and (msgDlg(MSG_CHANGES_LOST, MB_ICONQUESTION+MB_YESNO) = IDNO) then
+    exit;
+  initVFS();
 end;
 
 function checkMultiInstance():boolean;
@@ -7151,9 +7512,10 @@ var
 
   function getSinglePar():string;
   begin
-  if i >= length(params)-1 then raise Exception.Create('missing parameter needed');
-  consume:=2;
-  result:=params[i+1];
+    if i >= length(params)-1 then
+      raise Exception.Create('missing parameter needed');
+    consume:=2;
+    result := params[i+1];
   end; // getSinglePar
 
 begin
@@ -7166,15 +7528,17 @@ while i < length(params) do
     begin
     consume:=1; // number of params an option takes
     case params[i][2] of
+      '4': useIPv6 := False;
       'q': quitASAP:=TRUE;
       'u': uninstall();
       'i': cfgPath:=IncludeTrailingPathDelimiter(getSinglePar());
-      'b': userIcsBuffer:=strToIntDef(getSinglePar(), 0);
-      'B': userSocketBuffer:=strToIntDef(getSinglePar(), 0);
+      'b': userIcsBuffer := strToIntDef(getSinglePar(), 0);
+      'B': userSocketBuffer := strToIntDef(getSinglePar(), 0);
       'd': // delay
         begin
-        n:=strToIntDef(getSinglePar(), 0);
-        if n > 0 then sleep(n*100);
+        n := strToIntDef(getSinglePar(), 0);
+        if n > 0 then
+          sleep(n*100);
         end;
       'a':
         begin
@@ -7185,7 +7549,8 @@ while i < length(params) do
         end;
       'c': mainfrm.setcfg(unescapeNL(getSinglePar()));
       end;
-    for consume:=1 to consume do removeString(params, i);
+    for consume:=1 to consume do
+      removeString(params, i);
     continue;
     end;
   inc(i);
@@ -7216,7 +7581,9 @@ begin
 end; // processParams_after
 
 procedure TmainFrm.Numberofloggeduploads1Click(Sender: TObject);
-begin setTrayShows(TS_uploads) end;
+begin
+  setTrayShows(TS_uploads)
+end;
 
 procedure TmainFrm.Flagfilesaddedrecently1Click(Sender: TObject);
 var
@@ -7457,9 +7824,26 @@ if InputQuery(MSG_MIN_SPACE, MSG_MIN_SPACE_LONG, s) then
   end;
 end;
 
+function Tmainfrm.ipPointedInLog():string;
+var
+  s: string;
+begin
+  Result := '';
+  if not Assigned(LogBrowser) then
+    Exit;
+  try
+    // Call возвращает значение из JS
+    Result := LogBrowser.Call('getLastLogIP', []);
+  except
+    Result := '';
+  end;
+//  if checkAddressSyntax(s,FALSE) then
+//  result := s;
+end; // ipPointedInLog
+
 procedure TmainFrm.Banthisaddress1Click(Sender: TObject);
 begin
-  //banAddress(fileSrv, ipPointedInLog());
+  banAddress(fileSrv, ipPointedInLog());
 end;
 
 procedure TmainFrm.Address2name1Click(Sender: TObject);
@@ -7469,8 +7853,10 @@ end;
 
 procedure TmainFrm.Addresseseverconnected1Click(Sender: TObject);
 begin
-if modalOptionsChk.checked then ipsEverFrm.ShowModal()
-else ipsEverFrm.show()
+  if modalOptionsChk.checked then
+    ipsEverFrm.ShowModal()
+   else
+    ipsEverFrm.show()
 end;
 
 procedure TmainFrm.Renamepartialuploads1Click(Sender: TObject);
@@ -7480,12 +7866,12 @@ end;
 
 procedure TmainFrm.SelfTest1Click(Sender: TObject);
 
-  function doTheTest(host:string; port:string=''):string;
+  function doTheTest(host: String; port: String=''): String;
 
   var
-    t: Tdatetime;
-    ms: integer;
-    name: string;
+    t: TDateTime;
+    ms: Integer;
+    name: String;
   begin
     result:='';
     if progFrm.cancelRequested then exit;
@@ -7501,7 +7887,7 @@ procedure TmainFrm.SelfTest1Click(Sender: TObject);
     if name = '' then
       name:=host+':'+port;
     progFrm.show('Testing '+name+' ...', TRUE);
-    if not srv.active and not startServer() then
+    if not srv.active and not startServer(srv) then
       exit;
   // we many need to try this specific test more than once
     repeat
@@ -7583,14 +7969,14 @@ var
     tries:=toSA(['80','8123']);
     removeString(srv.port, tries); // already tested
 
-    bak.active := srv.active;
+    bak.active := fileSrv.httpServIsActive;
     bak.port := port;
     for i:=0 to length(tries)-1 do
       begin
       progFrm.progress:=succ(i)/succ(length(tries));
       port:=tries[i];
-      stopServer();
-      if not startServer() then
+      stopServer(fileSrv.htSrv);
+      if not startServer(fileSrv.htSrv) then
         continue;
       s:=doTheTest(ip);
       if successful(s) then
@@ -7604,9 +7990,9 @@ var
     else
       begin
       port:=bak.port;
-      stopServer();
+      stopServer(fileSrv.htSrv);
       if bak.active then
-        startServer();
+        startServer(srv);
       end;
   end; // tryDifferentPorts
 
@@ -7618,10 +8004,10 @@ begin
 
   originalPort := port;
 
-  if not srv.active and not startServer() then
+  if not srv.active and not startServer(srv) then
   begin
     port:='';
-    if not startServer() then
+    if not startServer(srv) then
       begin
       msgDlg(MSG_SELF_CANT_ON, MB_ICONERROR);
       exit;
@@ -7748,7 +8134,8 @@ end;
 
 procedure TmainFrm.Editresource1Click(Sender: TObject);
 var
-  oldRes, oldName, res: UnicodeString;
+  oldRes, res: UnicodeString;
+  oldName: String;
   done, nameSync: boolean;
   fn: String;
 begin
@@ -7800,67 +8187,80 @@ var
 procedure TmainFrm.menuPopup(Sender: TObject);
 
   procedure showSetting(mi:Tmenuitem; v:integer; unit_:string); overload;
-  begin mi.caption:=getTill('...', mi.caption, TRUE)+if_(v>0, format('       (%d %s)', [v, unit_])) end;
+  begin
+    mi.caption:=getTill('...', mi.caption, TRUE)+if_(v>0, format('       (%d %s)', [v, unit_]))
+  end;
 
+  procedure setVisible(chk: array of TMenuItem; v: Boolean);
+  var
+    k: TMenuItem;
+  begin
+    for k in chk do
+      k.Visible := v;
+  end;
 var
   i: integer;
 begin
-  if quitting then exit; // here we access some objects like srv that may not be ready anymore
+  if quitting then
+    exit; // here we access some objects like srv that may not be ready anymore
 
-  refreshIPlist();
+  try
+    refreshIPlist();
+   except
+  end;
   if Fingerprints1.Count > 0 then
     for i:=1 to Fingerprints1.Count-1 do
-      Fingerprints1.items[i].Enabled:=fingerprintsChk.checked;
+      Fingerprints1.items[i].Enabled := fingerprintsChk.checked;
 
-  logmenu.items.caption:= MSG_LOG;
+  logmenu.items.caption := MSG_LOG;
   if menu.items.find(logmenu.items.caption) = NIL then
     menu.items.insert(7, logmenu.items);
 
-  SwitchON1.imageIndex:=if_(srv.active, 11, 4);
-  SwitchON1.caption:=if_(srv.active, S_OFF, S_ON);
+  SwitchON1.imageIndex := if_(fileSrv.httpServIsActive, 11, 4);
+  SwitchON1.caption := if_(fileSrv.httpServIsActive, S_OFF, S_ON);
 
   stopSpidersChk.Enabled := not fileSrv.fileExistsByURL('/robots.txt');
   Showbandwidthgraph1.visible := not graphBox.visible;
   if bakShellMenuText='' then
-    bakShellMenuText:=Shellcontextmenu1.Caption;
-  Shellcontextmenu1.Caption:=if_(isIntegratedInShell(), REMOVE_SHELL, bakShellMenuText);
+    bakShellMenuText := Shellcontextmenu1.Caption;
+  Shellcontextmenu1.Caption := if_(isIntegratedInShell(), REMOVE_SHELL, bakShellMenuText);
   showSetting(mainFrm.Connectionsinactivitytimeout1, connectionsInactivityTimeout, 'seconds');
   showSetting(mainFrm.Minimumdiskspace1, minDiskSpace, 'MB');
   showSetting(mainFrm.Flagfilesaddedrecently1, filesStayFlaggedForMinutes, 'minutes');
-  Restore1.visible:=trayed;
-  Restoredefault1.Enabled:=tplIsCustomized;
-Numberofcurrentconnections1.Checked:= trayShows = TS_connections;
-Numberofloggedhits1.checked:= trayShows= TS_hits;
-Numberofloggeddownloads1.checked:= trayShows= TS_downloads;
-Numberofloggeduploads1.Checked:= trayShows= TS_uploads;
-NumberofdifferentIPaddresses1.Checked:= trayShows= TS_ips;
-NumberofdifferentIPaddresseseverconnected1.Checked:= trayShows= TS_ips_ever;
-ondownloadChk.checked:= flashOn='download';
-onconnectionChk.checked:= flashOn='connection';
-never1.checked:= flashOn='';
-defaultToVirtualChk.Checked:= addFolderDefault='virtual';
-defaultToRealChk.Checked:= addFolderDefault='real';
-askFolderKindChk.Checked:= addFolderDefault='';
-name1.Checked:= TRUE;
-time1.Checked:= defSorting='time';
-size1.checked:= defSorting='size';
-hits1.Checked:= defSorting='hits';
-Extension1.Checked:= defSorting='ext';
-Renamepartialuploads1.Enabled:=not deletePartialUploadsChk.checked;
-Seelastserverresponse1.visible:= dyndns.lastResult>'';
-Disable1.visible:= dyndns.url>'';
-try
-  RunHFSwhenWindowsstarts1.checked := existsShellLink(startupFilename) and (paramStr(0) = readShellLink(startupFilename))
- except
-  RunHFSwhenWindowsstarts1.checked:= FALSE
-end;
+  Restore1.visible := trayed;
+  Restoredefault1.Enabled := tplIsCustomized;
+  Numberofcurrentconnections1.Checked := trayShows = TS_connections;
+  Numberofloggedhits1.checked := trayShows= TS_hits;
+  Numberofloggeddownloads1.checked := trayShows= TS_downloads;
+  Numberofloggeduploads1.Checked := trayShows= TS_uploads;
+  NumberofdifferentIPaddresses1.Checked := trayShows= TS_ips;
+  NumberofdifferentIPaddresseseverconnected1.Checked := trayShows= TS_ips_ever;
+  ondownloadChk.checked := flashOn='download';
+  onconnectionChk.checked := flashOn='connection';
+  never1.checked := flashOn='';
+  defaultToVirtualChk.Checked := addFolderDefault='virtual';
+  defaultToRealChk.Checked := addFolderDefault='real';
+  askFolderKindChk.Checked := addFolderDefault='';
+  name1.Checked := TRUE;
+  time1.Checked := defSorting='time';
+  size1.checked := defSorting='size';
+  hits1.Checked := defSorting='hits';
+  Extension1.Checked := defSorting='ext';
+  Renamepartialuploads1.Enabled := not deletePartialUploadsChk.checked;
+  Seelastserverresponse1.visible := dyndns.lastResult>'';
+  Disable1.visible := dyndns.url>'';
+  try
+    RunHFSwhenWindowsstarts1.checked := existsShellLink(startupFilename) and (paramStr(0) = readShellLink(startupFilename))
+   except
+    RunHFSwhenWindowsstarts1.checked:= FALSE
+  end;
 // point out where the options will automatically be saved
-tofile1.Default:= saveMode=SM_FILE;
-toregistrycurrentuser1.default:= saveMode=SM_USER;
-toregistryallusers1.Default:= saveMode=SM_SYSTEM;
+  tofile1.Default := saveMode=SM_FILE;
+  toregistrycurrentuser1.default := saveMode=SM_USER;
+  toregistryallusers1.Default := saveMode=SM_SYSTEM;
 
-Reverttopreviousversion1.Visible:=fileExists(exePath+PREVIOUS_VERSION);
-Saveoptions1.visible:=not easyMode;
+  Reverttopreviousversion1.Visible := fileExists(exePath+PREVIOUS_VERSION);
+  Saveoptions1.visible:=not easyMode;
 testerUpdatesChk.visible:=not easyMode;
 preventStandbyChk.visible:=not easyMode;
 searchbetteripChk.visible:=not easyMode;
@@ -7938,10 +8338,11 @@ function paramsAsArray():TStringDynArray;
 var
   i: integer;
 begin
-i:=paramCount();
-setlength(result, i+2);
-result[0]:=monoLib.initialPath;
-for i:=0 to i do result[i+1]:=paramStr(i);
+  i := paramCount();
+  setlength(result, i+2);
+  result[0] := monoLib.initialPath;
+  for i:=0 to i do
+    result[i+1] := paramStr(i);
 end; // paramsAsArray
 
 function Tmainfrm.finalInit(): boolean;
@@ -7962,7 +8363,7 @@ function Tmainfrm.finalInit(): boolean;
   var
     should: string;
 
-    procedure fix(kind:string);
+    procedure fix(const kind: String);
     var
       s: string;
     begin
@@ -7983,6 +8384,7 @@ function Tmainfrm.finalInit(): boolean;
   begin
     loadCfg(iniS, tplS);
     result := setcfg(iniS, FALSE);
+    fileSrv.ipsEverConnected.text := UnUTF(loadfile(IPS_FILE));
     // convert old no-ip template url to new one (build#204)
     if dyndns.active and ansiContainsText(dyndns.url, 'no-ip.com') and not ansiContainsText(dyndns.url, 'nic/update')
     and (msgDlg(MSG_RE_NOIP, MB_OKCANCEL+MB_ICONWARNING) = MROK) then
@@ -8017,6 +8419,8 @@ function Tmainfrm.finalInit(): boolean;
 
 var
   params: TStringDynArray;
+  bCheckBak: Boolean;
+  newVFSPath: String;
 begin
   result := FALSE;
 
@@ -8061,9 +8465,9 @@ begin
   autosaveVFS.menu:=autosaveevery1;
 
   params:=paramsAsArray();
-  processParams_before(params, 'i');
+  processParams_before(params, 'i4');
 /////////////////////////////////////////////// Here creatinng main server part //////////////////////////////////////////////
-  fileSrv := TFileServer.Create(Self.filesBox, scriptLib.tryApplyMacrosAndSymbols,
+  fileSrv := TFileServer.Create(Self.filesBox, //scriptLib.tryApplyMacrosAndSymbols,
                                 getSP, getLP, getLogP,
                                 onAddingItemOnServer,
                                 setStatusBarText);
@@ -8075,137 +8479,173 @@ begin
   fileSrv.OnInitConnData := OnInitConnData;
   fileSrv.OnRemoveConnData := OnRemoveConnData;
   fileSrv.onUpdateTray := onUpdateTray;
+  fileSrv.OnBeforeAddFile := OnBeforeAddFile;
+  fileSrv.OnAfterAddFile := OnAfterAddFile;
   fileSrv.setAdd2LogFunc(utilLib.add2Log);
+  fileSrv.registerMacroFunc('set item', 2, setItemMacro);
+  fileSrv.registerMacroFunc('delete item', 1, deleteItemMacro);
+  fileSrv.registerMacroFunc('notify', 0, notifyMacro);
+  fileSrv.registerMacroFunc('save vfs', 0, saveVFSMacro);
+  fileSrv.registerMacroFunc('save cfg', 0, saveCFGMacro);
+  fileSrv.registerMacroFunc('vfs select', 0, VFSSelectMacro);
+  fileSrv.registerMacroFunc('set cfg', 1, setCFGMacro);
+  fileSrv.registerMacroFunc('get ini', 1, getINIMacro);
+  fileSrv.registerMacroFunc('set ini', 1, setINIMacro);
+  fileSrv.registerMacroFunc('dialog', 1, dialogMacro);
+  fileSrv.registerMacroFunc('exec', 1, execMacro);
+  fileSrv.registerMacroFunc('clipboard', 0, clipboardMacro);
+  fileSrv.registerMacroFunc('focus', 0, focusMacro);
+  fileSrv.registerMacroFunc('play', 1, playMacro);
+  fileSrv.registerMacroFunc('md5 file', 1, createFileFingerPrintMacro);
+  fileSrv.registerMacroFunc('set speed limit for address', 1, speedLimitPerAddressMacro);
+
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-initVFS();
-setFilesBoxExtras(winVersion IN [WV_SEVEN, WV_HIGHER]);
+  initVFS();
+  setFilesBoxExtras(filesBox, winVersion IN [WV_SEVEN, WV_HIGHER]);
 
-defaultCfg:=xtpl(getCfg(), ['active=no', 'active=yes']);
+  defaultCfg := xtpl(getCfg(), ['active=no', 'active=yes']);
 
-loadEvents();
-cfgLoaded:=FALSE;
-// if SHIFT is pressed skip configuration loading
-if not holdingKey(VK_SHIFT) then
-  cfgLoaded := loadAndApplyCFG()
-else
-  setStatusBarText(MSG_CLEAN_START);
+  loadEvents();
+  cfgLoaded := FALSE;
+  // if SHIFT is pressed skip configuration loading
+  if not holdingKey(VK_SHIFT) then
+    cfgLoaded := loadAndApplyCFG()
+   else
+    setStatusBarText(MSG_CLEAN_START);
 
-// CTRL avoids the only1instance setting
-if not holdingKey(VK_CONTROL)
-and only1instanceChk.checked and not mono.master then
-  begin
-  result:=FALSE;
-  quitASAP:=TRUE;
-  end;
-
-if not cfgLoaded then
-  setTplText(fileSrv);
-  
-processParams_before(params);
-
-if not quitASAP then
-  begin
-
-  if not cfgLoaded then
+  // CTRL avoids the only1instance setting
+  if not holdingKey(VK_CONTROL)
+     and only1instanceChk.checked and not mono.master then
     begin
-    startServer();
-    if not isIntegratedInShell() then
-      with TshellExtFrm.create(Self) do
-        try
-          case showModal() of
-            mrYes:
-              if not integrateInShell() then
-                msgDlg(MSG_ERROR_REGISTRY, MB_ICONERROR);
-            mrNo:;
-            else
-              begin
-              application.terminate();
-              exit;
-              end;
-          end;
-        finally free end;
+      result:=FALSE;
+      quitASAP:=TRUE;
     end;
 
-  if findExtOnStartupChk.checked and getExternalAddress(externalIP) then
-    setDefaultIP(externalIP);
+  if not cfgLoaded then
+    setTplText(fileSrv);
 
-  end;
+  processParams_before(params);
 
-// no address set or not available anymore
-if not stringExists(defaultIP, getPossibleAddresses()) then
-  setDefaultIP(getIP());
+  if not quitASAP then
+   begin
 
-progFrm:=TprogressForm.create();
-progFrm.preventBackward:=TRUE;
-updateUrlBox();
-application.HintPause:=100;
-splitV.AutoSnap:=FALSE;
-splitV.AutoSnap:=TRUE;
-splitV.update();
-graph.size:=graphBox.height;
-if not quitASAP then
-  begin
-  if autocopyURLonStartChk.Checked then
-    setClip(fileSrv.fullURL(fileSrv.rootFile) );
-
-
-  if reloadonstartupChk.checked then
-    if not fileExists(lastFileOpen) and not fileExists(lastFileOpen+BAK_EXT) then
-      lastFileOpen:='';
-
-  if getMtime(VFS_TEMP_FILE) > getMtime(lastFileOpen) then
-    if msgDlg(MSG_RESTORE_BAK, MB_YESNO+MB_ICONWARNING) = MRYES then
+    if not cfgLoaded then
       begin
-      deleteFile(lastFileOpen+BAK_EXT);
-      if renameFile(lastFileOpen, lastFileOpen+BAK_EXT) then
-        renameFile(VFS_TEMP_FILE, lastFileOpen)
-      else
-        lastFileOpen:=VFS_TEMP_FILE
+        startServer(srv);
+        if not isIntegratedInShell() then
+         with TshellExtFrm.create(Self) do
+          try
+            case showModal() of
+              mrYes:
+                if not integrateInShell() then
+                  msgDlg(MSG_ERROR_REGISTRY, MB_ICONERROR);
+              mrNo:;
+              else
+                begin
+                application.terminate();
+                exit;
+                end;
+            end;
+          finally free end;
       end;
 
-  loadVFS(lastFileOpen);
-  end;
-processParams_after(params);
+    if findExtOnStartupChk.checked and getExternalAddress(externalIP) then
+      setDefaultIP(externalIP);
 
-if not quitASAP then
-  begin
-  if not cfgLoaded then
-    setEasyMode(easyMode);
-  tray.setIcon(tray_ico);
-  tray.onEvent:=trayEvent;
-  if showmaintrayiconChk.checked then addTray();
-  end;
-timer.Enabled:=TRUE;
-applicationFullyInitialized:=TRUE;
-if quitASAP then
-  begin
-  application.showmainform:=FALSE;
-  close();
-  exit;
-  end;
+   end;
 
-  LoadSomeLanguage('HFS', exePath);
-  translateWindows;
-show();
-strToConnColumns(serializedConnColumns);
-if startminimizedChk.checked then application.Minimize();
-if findExtOnStartupChk.checked and (externalIP = '') then
-  setStatusBarText(MSG_EXT_ADDR_FAIL, 30);
-updatePortBtn(fileSrv);
-fixAddToHFS();
-filesBox.setFocus();
-//loadEvents();
-formResize(NIL); // recalculate to solve graphical glitches
+  // no address set or not available anymore
+  if not stringExists(defaultIP, getPossibleAddresses()) then
+    setDefaultIP(getIP());
 
-if not tplIsCustomized then
-  runTplImport(fileSrv);
+  progFrm := TprogressForm.create();
+  progFrm.preventBackward:=TRUE;
+  updateUrlBox();
+  application.HintPause:=100;
+  splitV.AutoSnap:=FALSE;
+  splitV.AutoSnap:=TRUE;
+  splitV.update();
+  graph.size := graphBox.height;
+  if not quitASAP then
+    begin
+    if autocopyURLonStartChk.Checked then
+      setClip(fileSrv.fullURL(fileSrv.rootFile) );
 
-runEventScript(fileSrv, 'start');
-{** trying to move loadEvents() before loadCfg()
-if srv.active then
-  runEventScript('server start'); // because this event wouldn't fire at start, the server was already on
-}
+
+    if reloadonstartupChk.checked then
+      if not fileExists(lastFileOpen) then
+        begin
+          bCheckBak := True;
+          if not isAbsolutePath(lastFileOpen) and (lastRunFolder <> '')
+            and DirectoryExists(lastRunFolder)
+             then
+            begin
+              // try find in previous run folder
+              newVFSPath := lastRunFolder + lastFileOpen;
+              if fileExists(newVFSPath) then
+                begin
+                  lastFileOpen := newVFSPath;
+                  bCheckBak := False;
+                end;
+            end;
+
+          if bCheckBak and not fileExists(lastFileOpen+BAK_EXT) then
+            lastFileOpen:='';
+        end;
+
+    if getMtime(VFS_TEMP_FILE) > getMtime(lastFileOpen) then
+      if msgDlg(MSG_RESTORE_BAK, MB_YESNO+MB_ICONWARNING) = MRYES then
+        begin
+        deleteFile(lastFileOpen+BAK_EXT);
+        if renameFile(lastFileOpen, lastFileOpen+BAK_EXT) then
+          renameFile(VFS_TEMP_FILE, lastFileOpen)
+        else
+          lastFileOpen := VFS_TEMP_FILE
+        end;
+
+    loadVFS(lastFileOpen);
+    end;
+  processParams_after(params);
+
+  if not quitASAP then
+    begin
+    if not cfgLoaded then
+      setEasyMode(easyMode);
+    tray.setIcon(tray_ico);
+    tray.onEvent:=trayEvent;
+    if showmaintrayiconChk.checked then addTray();
+    end;
+  timer.Enabled:=TRUE;
+  applicationFullyInitialized:=TRUE;
+  if quitASAP then
+    begin
+    application.showmainform:=FALSE;
+    close();
+    exit;
+    end;
+
+    LoadSomeLanguage('HFS', exePath);
+    translateWindows;
+  show();
+  strToConnColumns(serializedConnColumns);
+  if startminimizedChk.checked then application.Minimize();
+  if findExtOnStartupChk.checked and (externalIP = '') then
+    setStatusBarText(MSG_EXT_ADDR_FAIL, 30);
+  updatePortBtn(fileSrv);
+  fixAddToHFS();
+  filesBox.setFocus();
+  //loadEvents();
+  formResize(NIL); // recalculate to solve graphical glitches
+
+  if not tplIsCustomized then
+    fileSrv.runTplImport;
+
+  fileSrv.runEventScript('start');
+  {** trying to move loadEvents() before loadCfg()
+  if srv.active then
+    runEventScript('server start'); // because this event wouldn't fire at start, the server was already on
+  }
 end; // finalInit
 
 function expertModeNeededMsg(p_easyMode: Boolean):string;
@@ -8310,7 +8750,7 @@ if inputquery(MSG_SET_LIMIT, MSG_MAX_SIM_ADDR+#13+MSG_EMPTY_NO_LIMIT, s) then
   except msgDlg(MSG_INVALID_VALUE, MB_ICONERROR)
   end;
 if maxIPs = 0 then exit;
-i:=countIPs();
+i:=countIPs(srv);
 if i > maxIPs then
   msgDlg(format(MSG_NUM_ADDR, [i]), MB_ICONWARNING);
 end;
@@ -8359,7 +8799,7 @@ begin
   InputQuery(MSG_APACHE_LOG_FMT, MSG_APACHE_LOG_FMT_LONG, logFile.apacheFormat);
 end;
 
-procedure TmainFrm.Bindroottorealfolder1Click(Sender: TObject);
+procedure TmainFrm.BindRootToRealFolder1Click(Sender: TObject);
 var
   f: Tfile;
   res: UnicodeString;
@@ -8371,7 +8811,7 @@ begin
   if not selectFolder('', res) then
     exit;
   f.setResource(res);
-  exclude(f.flags, FA_VIRTUAL);
+  f.setAttr(FA_VIRTUAL, False);
   VFSmodified:=TRUE;
 end;
 
@@ -8379,13 +8819,14 @@ procedure TmainFrm.Unbindroot1Click(Sender: TObject);
 var
   f: Tfile;
 begin
-f:=selectedFile;
-if (f = NIL) or not f.isRealFolder() or not f.isRoot() then exit;
-f.setResource('');
-f.uploadFilterMask:='';
-f.accounts[FA_UPLOAD]:=NIL;
-include(f.flags, FA_VIRTUAL);
-VFSmodified:=TRUE;
+  f := selectedFile;
+  if (f = NIL) or not f.isRealFolder() or not f.isRoot() then
+    exit;
+  f.setResource('');
+  f.uploadFilterMask:='';
+  f.accounts[FA_UPLOAD]:=NIL;
+  f.setAttr(FA_VIRTUAL, True);
+  VFSmodified := TRUE;
 end;
 
 procedure TmainFrm.SwitchON1Click(Sender: TObject);
@@ -8407,11 +8848,11 @@ for i:=0 to length(list)-1 do
         if isLocked() then someLocked:=TRUE
         else
           begin
-          exclude(flags, FA_VIRTUAL);
-          setResource(resource);
-          setupImage(mainfrm.useSystemIconsChk.checked);
-          setNilChildrenFrom(list, i);
-          node.DeleteChildren();
+            setAttr(FA_VIRTUAL, False);
+            setResource(resource);
+            setupImage(mainfrm.useSystemIconsChk.checked);
+            setNilChildrenFrom(list, i);
+            node.DeleteChildren();
           end;
 VFSmodified:=TRUE;
 if someLocked then msgDlg(MSG_SOME_LOCKED, MB_ICONWARNING);
@@ -8441,7 +8882,7 @@ renameFile(fn, fn+'.html');
 exec(fn+'.html');
 end;
 
-procedure TmainFrm.Showcustomizedoptions1Click(Sender: TObject);
+procedure TmainFrm.ShowCustomizedOptions1Click(Sender: TObject);
 var
   default: TStrings;
   current, defV, v, k: string;
@@ -8553,20 +8994,20 @@ end; // ipmenuclick
 procedure TmainFrm.Anyaddress1Click(Sender: TObject);
 begin
   listenOn:='';
-  restartServer();
+  restartServer(srv);
 end;
 
 procedure TmainFrm.AnyAddressV6Click(Sender: TObject);
 begin
   listenOn:='[*]';
-  restartServer();
+  restartServer(srv);
 end;
 
 procedure Tmainfrm.acceptOnMenuclick(sender: TObject);
 begin
   listenOn := (sender as Tmenuitem).caption;
   delete(listenOn, pos('&',listenOn), 1);
-  restartServer();
+  restartServer(srv);
 end; // acceptOnMenuclick
 
 procedure TmainFrm.filesBoxEndDrag(Sender, Target: TObject; X, Y: Integer);
@@ -8576,10 +9017,19 @@ begin
 end;
 
 procedure TmainFrm.filesBoxEnter(Sender: TObject);
-begin setFilesBoxExtras(TRUE) end;
+begin
+  setFilesBoxExtras(filesBox, TRUE)
+end;
 
 procedure TmainFrm.filesBoxExit(Sender: TObject);
-begin setFilesBoxExtras(filesBox.MouseInClient) end;
+begin
+  setFilesBoxExtras(filesBox, filesBox.MouseInClient)
+end;
+
+procedure TmainFrm.logPnlResize(Sender: TObject);
+begin
+  MaybeInitLogBrowser;
+end;
 
 procedure TmainFrm.Disable1Click(Sender: TObject);
 begin
@@ -8629,6 +9079,7 @@ function TmainFrm.copySelection(): TFileNodeDynArray;
 var
   i: integer;
 begin
+  result := [];
   setlength(result, filesBox.SelectionCount);
   for i:=0 to filesBox.SelectionCount-1 do
     result[i] := filesBox.selections[i];
@@ -8843,68 +9294,25 @@ INITIALIZATION
 
 randomize();
 setErrorMode(SEM_FAILCRITICALERRORS);
-exePath:=extractFilePath(ExpandFileName(paramStr(0)));
-cfgPath:=exePath;
-// we give priority to exePath because some people often clear the temp folder
-tmpPath:=exePath;
-if savefileA(tmpPath+'test.tmp','') then
-  deleteFile(tmpPath+'test.tmp')
- else
-  tmpPath:=getTempDir();
 lastUpdateCheckFN := tmpPath+'HFS last update check.tmp';
-setCurrentDir(exePath); // sometimes people mess with the working directory, so we force it to the exe path
-//tpl_help := UnUTF(getRes('tplHlp'));
-defSorting := 'name';
-dmBrowserTpl := Ttpl.create(getResText('dmBrowserTpl'));
-filelistTpl  := Ttpl.create(getResText('filelistTpl'));
-noMacrosTpl  := Ttpl.create(getResText('noMacrosTpl'));
-ip2obj := THashedStringList.create();
-etags := THashedStringList.create();
-ipsEverConnected:=THashedStringList.create();
-ipsEverConnected.sorted:=TRUE;
-ipsEverConnected.duplicates:=dupIgnore;
-ipsEverConnected.delimiter:=';';
 logMaxLines := 2000;
 trayShows := TS_downloads;
-flashOn := 'download';
-forwardedMask:='::1;127.0.0.1';
-runningOnRemovable := DRIVE_REMOVABLE = GetDriveType(PChar(exePath[1]+':\'));
-etags.values['exe'] := MD5PassHS(dateToHTTPr(getMtimeUTC(paramStr(0))));
-toAddFingerPrint := TStringList.Create;
 
 
 dll := GetModuleHandle('kernel32.dll');
 if dll <> HINSTANCE_ERROR then
-  setThreadExecutionState:=getprocaddress(dll, 'SetThreadExecutionState');
-
-toDelete := Tlist.create();
-usersInVFS := TusersInVFS.create();
-
-openInBrowser := '*.htm;*.html;*.jpg;*.jpeg;*.gif;*.png;*.txt;*.swf;*.svg;*.webp';
+  setThreadExecutionState := getprocaddress(dll, 'SetThreadExecutionState');
 
 saveMode:=SM_USER;
 lastDialogFolder := getCurrentDir();
-autoupdatedFiles := TstringToIntHash.create();
 dyndns.active := TRUE;
 connectionsInactivityTimeout := 60; // 1 minute
 startupFilename := getShellFolder('Startup')+'\HFS.lnk';
 tempScriptFilename := getTempDir()+'hfs script.tmp';
 
-logfile.apacheZoneString := if_(GMToffset < 0, '-','+')
-  +format('%.2d%.2d', [abs(GMToffset div 60), abs(GMToffset mod 60)]);
-
 
 FINALIZATION
 
 progFrm.free;
-toDelete.free;
-filelistTpl.free;
-autoupdatedFiles.free;
-usersInVFS.free;
-ip2obj.free;
-ipsEverConnected.free;
-etags.free;
-if Assigned(toAddFingerPrint) then
-  FreeAndNil(toAddFingerPrint);
 
 end.

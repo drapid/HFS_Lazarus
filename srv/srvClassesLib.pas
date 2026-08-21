@@ -34,6 +34,7 @@ uses
   Generics.Collections,
   {$ELSE USE_MORMOT_COLLECTIONS}
   mormot.core.collections,
+  mormot.core.json,
   {$ENDIF USE_MORMOT_COLLECTIONS}
   hslib, srvConst;
 
@@ -93,8 +94,8 @@ type
     end;
 
   Thasher = class(TStringList)
-    procedure loadFrom(path: String);
-    function getHashFor(fn: String): String;
+    procedure loadFrom(const path: String);
+    function getHashFor(const fn: String): String;
     end;
 
   {$IFNDEF USE_MORMOT_COLLECTIONS}
@@ -111,18 +112,40 @@ type
     procedure setInt(const s: String; int: integer);
     end;
 
+  TstringIntPairs = array of record
+    str: string;
+    int: integer;
+   end;
+
+  TZencoding=(E_PLAIN, E_B64, E_ZIP);
+
+  TstringIntPairsHelper = record helper for TstringIntPairs
+    function toStr(var userIconMasks: String; imgSize: Integer = 16): String;
+    function AddFromStr(pStr: String): Integer;
+    function AddUserIconMasksFromStr(pStr: String; imgSize: Integer = 16): Integer;
+  end;
+
+  TAccountsHelper = record helper for Taccounts
+    function toStr(): String;
+    function fromStr(pStr: String): Integer;
+  end;
+
+  TSectionName = RawByteString;
+  PSections = ^TSections;
+  TSections = TArray<TSectionName>;
+
   PtplSection = ^TtplSection;
   TtplSection = record
-    name: string;
+    name: TSectionName;
     txt: UnicodeString;
     nolog, public, noList, cache: boolean;
     ts: Tdatetime;
     end;
 
   {$IFNDEF USE_MORMOT_COLLECTIONS}
-  Tstr2section = Tdictionary<string, PtplSection>;
+  Tstr2section = Tdictionary<TSectionName, PtplSection>;
   {$ELSE USE_MORMOT_COLLECTIONS}
-  Tstr2section = IKeyValue<String, PtplSection>;
+  Tstr2section = IKeyValue<TSectionName, PtplSection>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
 
   Ttpl = class
@@ -136,8 +159,8 @@ type
 //    fUTF8: boolean;
     fOver: Ttpl;
     sections2: Tstr2section;
-    function  getTxt(const section: String): UnicodeString;
-    function  newSection(const section: String): PtplSection;
+    function  getTxt(const section: TSectionName): UnicodeString;
+    function  newSection(const section: TSectionName): PtplSection;
     procedure fromString(const txt: UnicodeString);
     function  toS: UnicodeString;
     procedure fromRaw(const txt: RawByteString);
@@ -150,21 +173,22 @@ type
   {$ENDIF USE_MORMOT_COLLECTIONS}
   public
     onChange: TNotifyEvent;
+    constructor createResource(const ResourceName: String; over: Ttpl=NIL); OverLoad;
     constructor create(const txt: RawByteString=''; over: Ttpl=NIL); OverLoad;
     constructor create(const txt: String; over: Ttpl=NIL); OverLoad;
    {$IFDEF FPC}
     constructor create(const txt: UnicodeString; over: Ttpl=NIL); OverLoad;
    {$ENDIF FPC}
     destructor Destroy; override;
-    property txt[const section: String]: UnicodeString read getTxt; default;
+    property txt[const section: TSectionName]: UnicodeString read getTxt; default;
     property fullText: RawByteString read toRaw write fromRaw;
     property fullTextS: UnicodeString read toS write fromString;
 //    property utf8:boolean read fUTF8;
     property over:Ttpl read fOver write setOver;
-    function sectionExist(section: String): Boolean;
+    function sectionExist(const section: TSectionName): Boolean;
     function getTxtByExt(const fileExt: String): UnicodeString;
-    function getSection(section: String; inherit: Boolean=TRUE): PtplSection;
-    function getSections(): TStringDynArray;
+    function getSection(section: TSectionName; inherit: Boolean=TRUE): PtplSection;
+    function getSections(): TSections;
     procedure appendString(txt: UnicodeString);
     function getStrByID(const id: String): String;
     function me(): Ttpl;
@@ -206,21 +230,22 @@ type
   TSessionId = String;
 
   Tsession = class
+    fSrv: ThttpSrv;
     vars: THashedStringList;
     ttl: Double;
     created, expires: Tdatetime;
     user, ip, redirect: String;
     procedure setVar(k: TSessionId; const v: String);
     function getVar(k: TSessionId): String;
-    class function sanitizeSID(s:TSessionId):TSessionId;
+    class function sanitizeSID(s: TSessionId): TSessionId;
     class function getNewSID(): TSessionId;
   public
     id: TSessionId;
-    constructor create(const sid: TSessionId='');
+    constructor create(srv: ThttpSrv; const sid: TSessionId='');
     destructor Destroy; override;
     procedure init;
     procedure keepAlive();
-    procedure setTTL(t:Tdatetime);
+    procedure setTTL(t: Tdatetime);
     property v[k: TSessionId]: String read getVar write setVar; default;
    end;
 
@@ -231,6 +256,7 @@ type
   {$ENDIF USE_MORMOT_COLLECTIONS}
 
   Tsessions = class
+   fSrv: ThttpSrv;
    fS2: TSessId2Sess;
   private
   {$IFDEF USE_MORMOT_COLLECTIONS}
@@ -238,7 +264,7 @@ type
                aIndex, aCount: integer; aOpaque: pointer): boolean;
   {$ENDIF USE_MORMOT_COLLECTIONS}
   public
-    constructor Create;
+    constructor create(srv: ThttpSrv);
     destructor Destroy; override;
     procedure  clearSession(sId: TSessionId);
     procedure  destroySession(sId: TSessionId);
@@ -299,10 +325,11 @@ type
   end;
 
   TperIp = class // for every different address, we have an object of this class. These objects are never freed until hfs is closed.
+    fSrv: ThttpSrv;
    public
     limiter: TspeedLimiter;
     customizedLimiter: boolean;
-    constructor create();
+    constructor create(srv: ThttpSrv);
     destructor Destroy; override;
    end;
 
@@ -328,6 +355,7 @@ type
     conn: ThttpConn;
     limiter: TspeedLimiter;
     fileXferStart: Tdatetime;
+    guiData: TObject;
     averageSpeed: real;   { calculated on disconnection as bytesSent/totalTime. it is calculated also while
                             sending and it is different from conn.speed because conn.speed is average speed
                             in the last second, while averageSpeed is calculated on ETA_FRAME seconds }
@@ -359,10 +387,11 @@ type
     lastActivityTime: Tdatetime;
     lastFN: String;
     isLocalAddress: Boolean;
+    procedure CreateLimiter(max: Integer=MAXINT);
+    procedure RemoveLimiter;
     function  goodPassword(const pwd: String; s: String; func: ThashFunc): Boolean;
     function  passwordValidation(const pwd: String): Boolean;
-    procedure setSessionVar(const k, v: String);
-    procedure logout();
+//    procedure setSessionVar(const k, v: String);
     procedure disconnect(const reason: string);
     function  allowRecur: Boolean;
     function  getFilesSelection(): TStringDynArray;
@@ -371,6 +400,7 @@ type
     function  isDownloading: boolean;
     function  isSendingFile: Boolean;
     function  isReceivingFile: Boolean;
+    function  getSpeed(): Real;
     function  getFileName(): String;
   end;
 
@@ -378,13 +408,139 @@ type
   TFileNode = TTreeNode;
   TFileNodeDynArray = array of TFileNode;
 
+  IFile = interface;
+
   TFileEvent = procedure(f: TObject);
   TFileEventR = procedure(var s: RawByteString; f: TObject);
+
+  IFileTree = interface
+    procedure Repaint;
+    procedure ClearItems;
+    function  RemoveSecondRoot: Boolean;
+    function  newNode(parent: TFileNode; const name: String; f: IFile): TFileNode;
+    function  findNode(f: IFile): TFileNode;
+    function  nodeToFile(node: TFileNode): TObject;
+    function  nodeText(node: TFileNode): String;
+    function  nodeHasChildren(node: TFileNode): Boolean;
+    function  getParentNode(node: TFileNode): TFileNode;
+    function  getFirstChild(node: TFileNode): TFileNode;
+    function  getNextSibling(node: TFileNode): TFileNode;
+    procedure DoImageChanged(Sender: IFile; n: TFileNode = NIL);
+    procedure ChangedName(Sender: IFile; const Name: String);
+    procedure DeleteChildren(node: TFileNode);
+    procedure DeleteNode(node: TFileNode);
+    procedure ExpandNode(node: TFileNode);
+//    procedure ForAllSubNodes(Sender: TFileNode; proc: TProc<TFileNode>);
+    procedure ForAllSubNodes(Sender: TFileNode; proc: TProc<IFile>);
+  end;
+
+
+  TfileAttribute = (
+    FA_FOLDER,       // folder kind
+    FA_VIRTUAL,      // does not exist on disc
+    FA_ROOT,         // only the root item has this attribute
+    FA_BROWSABLE,    // permit listing of this folder (not recursive, only dir)
+    FA_HIDDEN,       // hidden items won't be shown to browsers (not recursive)
+     //no more used attributes have to stay for backward compatibility with
+    { VFS files }
+    FA_NO_MORE_USED1,
+    FA_NO_MORE_USED2,
+    FA_TEMP,            // this is a temporary item and is not part of the VFS
+    FA_HIDDENTREE,      // recursive hidden
+    FA_LINK,            // redirection
+    FA_UNIT,            // logical unit (drive)
+    FA_VIS_ONLY_ANON,   // visible only to anonymous users [no more used]
+    FA_DL_FORBIDDEN,    // forbid download (not recursive)
+    FA_HIDE_EMPTY_FOLDERS,  // (recursive)
+    FA_DONT_COUNT_AS_DL,    // (not recursive)
+    FA_SOLVED_LNK,
+    FA_HIDE_EXT,       // (recursive)
+    FA_DONT_LOG,       // (recursive)
+    FA_ARCHIVABLE      // (recursive)
+  );
+  TfileAttributes = set of TfileAttribute;
+
+  TfileAction = (FA_ACCESS, FA_DELETE, FA_UPLOAD);
+  TSpeedType = (ST_INCOME, ST_OUTCOME, ST_AVERAGE);
+  TfileCallbackReturn = set of (FCB_NO_DEEPER, FCB_DELETE, FCB_RECALL_AFTER_CHILDREN); // use FCB_* flags
+
+  // returning FALSE stops recursion
+  TfileCallbackI = function(f: Ifile; childrenDone: boolean; par, par2: IntPtr): TfileCallbackReturn;
+
+  IFile = interface
+    procedure freeObject;
+    function  getObject: TObject;
+    function  getParent: IFile;
+    function  getResource: UnicodeString;
+    function  getFlags: TfileAttributes;
+    function  getMainFileI: IFile;
+    function  getNode: TFileNode;
+    function  getFolder(): String;
+    function  getName: String;
+    procedure setName(const name: String);
+    function  getUser: String;
+    function  getPWD: String;
+    function  getLnk: String;
+    function  getComment: String;
+    procedure setComment(sc: String);
+    procedure setResource(const pRes: UnicodeString);
+    procedure initSizeTime(pSize: Int64; pTime: TDateTime);
+    function  getSize: Int64;
+    function  getLocked: Boolean;
+    procedure DeleteNode;
+    function  isFolder(): Boolean;
+    function  isFile(): Boolean;
+    function  isFileOrFolder(): Boolean;
+    function  isRealFolder(): Boolean;
+    function  isVirtualFolder(): Boolean;
+    function  isEmptyFolder(loadPrefs: TLoadPrefs; cd: TconnDataMain=NIL): Boolean;
+    function  isArchive(): Boolean;
+    function  isRoot(): Boolean;
+    function  isLink(): Boolean;
+    function  isTemp(): Boolean;
+    function  isNew(): Boolean;
+    function  isDLforbidden(): Boolean;
+    function  getSystemIcon(): Integer;
+    function  gotSystemIcon(): Boolean;
+    function  getIconForTreeview(sysIcons: Boolean): Integer;
+    function  getIcon: Integer;
+    function  getHasThumb: Boolean;
+    function  getTime(isAdded: Boolean): TDateTime;
+    function  getDLcount(): Integer;
+    function  relativeURL(doEncode: Boolean=FALSE): String;
+    function  getDynamicComment(loadPrefs: TLoadPrefs; skipParent: Boolean=FALSE): String;
+    function  getAccounts(fa: TfileAction): Types.TStringDynArray;
+    procedure getFiltersRecursively(var files, folders: String);
+    function  hasRecursive(attributes: TfileAttributes; orInsteadOfAnd: Boolean=FALSE; outInherited: Pboolean=NIL): Boolean; overload;
+    function  hasRecursive(attribute: TfileAttribute; outInherited: Pboolean=NIL): Boolean; overload;
+    procedure recursiveApplyI(callback: TfileCallbackI; par: IntPtr=0; par2: IntPtr=0);
+    function  getAccountsFor(action: TfileAction; specialUsernames: Boolean=FALSE; outInherited: Pboolean=NIL): TstringDynArray;
+    function  accessFor(const username, password: String): Boolean; overload;
+    function  accessFor(cd: TconnDataMain): Boolean; overload;
+    function  accountAllowed(action: TfileAction; cd: TconnDataMain): Boolean;
+    procedure setAttr(a: TfileAttribute; isInclude: Boolean);
+    procedure setupImage(sysIcons: Boolean; pNode: TFileNode = NIL);
+    property  Parent: IFile read getParent;
+    property  Resource: UnicodeString read getResource;
+    property  name: String read getName write SetName;
+    property  comment: String read getComment write setComment;
+    property  lnk: String read getLnk;
+    property  user: String read getUser;
+    property  pwd: String read getPWD;
+    property  size: Int64 read getSize;
+    property  node: TFileNode read getNode;
+    property  icon: Integer read getIcon;
+    property  locked: Boolean read getLocked;
+    property  hasThumb: Boolean read getHasThumb;
+    property  flags: TfileAttributes read getFlags;
+    property  DLcount: Integer read getDLcount;
+    property  accounts[fa: TfileAction]: Types.TStringDynArray read getAccounts;
+  end;
 
   IServerTree = interface
 //    function  getMainTree: TFileTree;
     procedure DoImageChanged(Sender: TObject; n: TFileNode = NIL);
-    procedure ChangedName(Sender: TObject; Name: String);
+    procedure ChangedName(Sender: TObject; const Name: String);
     function  findNode(f: TObject): TFileNode;
     procedure DeleteChildren(f: TObject);
     procedure DeleteNode(f: TObject);
@@ -410,14 +566,15 @@ type
 
 
   function conn2dataMain(p: Tobject): TconnDataMain; inline; overload;
-  function conn2dataMain(i: integer): TconnDataMain; inline; overload;
+  function conn2dataMain(srv: ThttpSrv; i: integer): TconnDataMain; inline; overload;
   function getETA(data: TconnDataMain): String;
-  function countIPs(onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
-  function countConnectionsByIP(const ip: String): Integer;
-  function getGraphPic(cd: TconnDataMain; w, h: Integer): RawByteString;
-  function objByIP(const ip: String): TperIp;
+  function countIPs(srv: ThttpSrv; onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
+  function countConnectionsByIP(srv: ThttpSrv; const ip: String): Integer;
+  function getGraphPic(cd: TconnDataMain; samplesLenght: Integer; w, h: Integer; var format: TContentTypeType): RawByteString;
   function newMacroTableVal: TMacroTableVal;
 
+const
+  FILEACTION2STR: array [TfileAction] of string = ('Access', 'Delete', 'Upload');
 
 implementation
 
@@ -429,9 +586,7 @@ uses
   {$ENDIF ~FPC}
   RDFileUtil, RDUtils,
   IconsLib,
-  HSUtils,
-  parserLib,
-  srvUtils, srvVars;
+  HSUtils, scriptLib, srvUtils;
 
 resourcestring
   MSG_ANTIDOS_REPLY = 'Please wait, server busy';
@@ -577,7 +732,9 @@ end; // getTplFor
 //////////// TusersInVFS
 
 function TusersInVFS.empty():boolean;
-begin result:= users = NIL end;
+begin
+  result:= users = NIL
+end;
 
 procedure TusersInVFS.reset();
 begin
@@ -695,82 +852,237 @@ end; // purge
 
 //////////// Thasher
 
-procedure Thasher.loadFrom(path:string);
+procedure Thasher.loadFrom(const path: String);
 var
   sr: TsearchRec;
   sA, l, h: RawByteString;
   f: String;
+  p: String;
 begin
   if path='' then
     exit;
-  path := includeTrailingPathDelimiter(lowercase(path));
-  if findFirst(path+'*.md5', faAnyFile-faDirectory, sr) <> 0 then exit;
+  p := includeTrailingPathDelimiter(lowercase(path));
+  if findFirst(p +'*.md5', faAnyFile-faDirectory, sr) <> 0 then
+    exit;
   repeat
-   sA := loadfile(path+sr.name);
+   sA := loadfile(p+sr.name);
   while sA > '' do
     begin
       l := chopline(sA);
       h:=trim(chop(RawByteString('*'),l));
-      if h = '' then break;
+      if h = '' then
+        break;
       if l = '' then
         // assume it is referring to the filename without the extention
         f := copy(sr.name, 1, length(sr.name)-4)
        else
         f := UnUTF(l);
-      add(path+lowercase(f)+'='+UnUTF(h));
+      add(p+lowercase(f)+'='+UnUTF(h));
     end;
   until findnext(sr) <> 0;
-sysutils.findClose(sr);
+  sysutils.findClose(sr);
 end; // loadFrom
 
-function Thasher.getHashFor(fn:string):string;
+function Thasher.getHashFor(const fn: String): String;
 begin
-try result:=values[lowercase(fn)]
-except result:='' end
+  try
+    result := values[lowercase(fn)]
+   except
+    result := ''
+  end;
 end;
 
 //////////// TstringToIntHash
 
 constructor TstringToIntHash.create;
 begin
-inherited create;
-sorted:=TRUE;
-duplicates:=dupIgnore;
+  inherited create;
+  sorted := TRUE;
+  duplicates := dupIgnore;
 end; // create
 
 function TstringToIntHash.getIntByIdx(idx:integer):integer;
-begin if idx < 0 then result:=0 else result:=integer(objects[idx]) end;
+begin
+  if idx < 0 then
+    result := 0
+   else
+    result := integer(objects[idx])
+end;
 
 function TstringToIntHash.getInt(const s:string):integer;
-begin result:=getIntByIdx(indexOf(s)) end;
+begin
+  result := getIntByIdx(indexOf(s))
+end;
 
 procedure TstringToIntHash.setInt(const s:string; int:integer);
 begin
-beginUpdate();
-objects[add(s)]:=Tobject(int);
-endUpdate();
+  beginUpdate();
+  objects[add(s)]:=Tobject(int);
+  endUpdate();
 end; // setInt
 
 function TstringToIntHash.incInt(const s:string):integer;
 var
   i: integer;
 begin
-beginUpdate();
-i:=add(s);
-result:=integer(objects[i]);
-inc(result);
-objects[i]:=Tobject(result);
-endUpdate();
+  beginUpdate();
+  i:=add(s);
+  result:=integer(objects[i]);
+  inc(result);
+  objects[i]:=Tobject(result);
+  endUpdate();
 end; // autoupdatedFiles_getCounter
 
+function TstringIntPairsHelper.toStr(var userIconMasks: String; imgSize: Integer = 16): String;
+var
+  i, j: integer;
+begin
+  result:='';
+  if length(Self) > 0 then
+   for i:=0 to length(Self)-1 do
+    begin
+    j:=idx_img2ico(Self[i].int);
+    if j >= USER_ICON_MASKS_OFS then
+      userIconMasks := userIconMasks+format('%d:%s|', [j, ZEncodeA(pic2str(j, imgSize), E_ZIP)]);
+    result:=result+format('%s|%d||', [Self[i].str, j]);
+    end;
+end;
+
+function TstringIntPairsHelper.AddFromStr(pStr: String): Integer;
+var
+  l: Integer;
+begin
+  Result := 0;
+  while pStr > '' do
+    begin
+      l := length(Self);
+      setLength(Self, l+1);
+      Self[l].str := chop('|', pStr);
+      Self[l].int := StrToIntDef(chop('||',pStr), 0);
+      Inc(Result);
+    end;
+end; // strToIconmasks
+
+function TstringIntPairsHelper.AddUserIconMasksFromStr(pStr: String; imgSize: Integer = 16): Integer;
+var
+  i, iFrom, iTo: integer;
+//  userIconOfs: Integer;
+begin
+  Result := 0;
+//  userIconOfs := IconsDM.images.Count;
+  while pStr > '' do
+    begin
+      iFrom := strTointDef(chop(':', pStr), -1);
+      iTo := str2pic(unzipRaw(chop('|', pStr)), imgSize);
+      for i:=0 to length(Self)-1 do
+        if Self[i].int = iFrom then
+          Self[i].int:=iTo;
+      Inc(Result);
+    end;
+end; // readUserIconmasks
+
+function TAccountsHelper.ToStr(): String;
+var
+  i: integer;
+  a: Paccount;
+
+  function prop(const name, value:string; encoding:TZEncoding=E_PLAIN): string;
+  begin
+    if value > '' then
+      result:='|'+name+':'+ ZEncodeW(value, encoding)
+     else
+      Result := '';
+  end;
+
+begin
+  result := '';
+  if Length(Self) > 0 then
+  for i:=0 to length(Self)-1 do
+  	begin
+    a := @Self[i];
+    result := result
+      +prop('login', a.user+':'+a.pwd, E_B64)
+      +prop('enabled', yesno[a.enabled])
+      +prop('group', yesno[a.group])
+      +prop('no-limits', yesno[a.noLimits])
+      +prop('redir', a.redir)
+      +prop('link', join(':',a.link))
+      +prop('notes', a.notes, E_ZIP)
+      +';';
+    end;
+end; // accountsToStr
+
+function TAccountsHelper.fromStr(pStr: String): Integer;
+  function yes(const s: String=''): Boolean;
+  begin
+    result := if_(s>'',s, pStr)='yes'
+  end;
+var
+
+  s, t, p: string;
+  i: integer;
+  a: Paccount;
+begin
+  Result := 0;
+  SetLength(Self, 0);
+//  Self :=NIL;
+  while pStr > '' do
+    begin
+    // accounts are separated by semicolons
+    s := chop(';', pStr);
+    if s = '' then
+      continue;
+    i := length(Self);
+    setLength(Self, i+1);
+    a := @Self[i];
+    a.enabled:=TRUE; // by default
+    while s > '' do
+      begin
+      // account properties are separated by pipes
+      t:=chop('|',s);
+      p:=chop(':',t); // get property name
+      if p = '' then
+        continue;
+      if p = 'login' then
+        begin
+        if not anycharIn(':', t) then
+          t:=decodeB64utf8(t);
+        a.user:=chop(':',t);
+        a.pwd:=t;
+        end
+       else
+      if p = 'enabled' then a.enabled:=yes(t)
+       else
+      if p = 'no-limits' then a.noLimits:=yes(t)
+       else
+      if p = 'group' then a.group:=yes(t)
+       else
+      if p = 'redir' then a.redir:=t
+       else
+      if p = 'link' then a.link:=split(':',t)
+       else
+      if p = 'notes' then a.notes := unzipS(t);
+      end;
+    end;
+end; // strToAccounts
+
+
 //////////// Ttpl
+
+constructor Ttpl.createResource(const ResourceName: String; over: Ttpl=NIL);
+var
+  lRaw: RawByteString;
+begin
+  lRaw := getResText(PChar(ResourceName));
+  Create(lRaw, over);
+end;
 
 constructor Ttpl.create(const txt: RawByteString=''; over:Ttpl=NIL);
 begin
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   sections2 := Tstr2section.Create();
   {$ELSE USE_MORMOT_COLLECTIONS}
-  sections2 := Collections.NewKeyValue<String, PtplSection>;
+  sections2 := Collections.NewKeyValue<TSectionName, PtplSection>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
   fullText := txt;
   self.over := over;
@@ -781,7 +1093,7 @@ begin
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   sections2 := Tstr2section.Create();
   {$ELSE USE_MORMOT_COLLECTIONS}
-  sections2 := Collections.NewKeyValue<String, PtplSection>;
+  sections2 := Collections.NewKeyValue<TSectionName, PtplSection>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
   fullTextS := txt;
   self.over := over;
@@ -792,7 +1104,7 @@ begin
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   sections2 := Tstr2section.Create();
   {$ELSE USE_MORMOT_COLLECTIONS}
-  sections2 := Collections.NewKeyValue<String, PtplSection>;
+  sections2 := Collections.NewKeyValue<TSectionName, PtplSection>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
   fullTextS := txt;
   self.over := over;
@@ -806,41 +1118,41 @@ end; // destroy
 
 function Ttpl.getStrByID(const id: String): String;
 begin
-if strTable = NIL then
-  begin
-  strTable := THashedStringList.create;
-  strTable.text:=txt['special:strings'];
-  end;
-result:=strTable.values[id];
-if (result = '') and assigned(over) then
-  result:=over.getStrByID(id)
+  if strTable = NIL then
+   begin
+    strTable := THashedStringList.create;
+    strTable.text:=txt['special:strings'];
+   end;
+  result := strTable.values[id];
+  if (result = '') and assigned(over) then
+    result := over.getStrByID(id)
 end; // getStrByID
 
-function Ttpl.newSection(const section: String): PtplSection;
+function Ttpl.newSection(const section: TSectionName): PtplSection;
 begin
   new(result);
   sections2.Add(section, result);
   result.name := section;
 end; // newSection
 
-function Ttpl.sectionExist(section:string):boolean;
+function Ttpl.sectionExist(const section: TSectionName): Boolean;
 begin
-result:=assigned(getSection(section));
-if not result and assigned(over) then
-  result:=over.sectionExist(section);
+  result := assigned(getSection(section));
+  if not result and assigned(over) then
+    result := over.sectionExist(section);
 end;
 
-function Ttpl.getSection(section:string; inherit:boolean=TRUE):PtplSection;
+function Ttpl.getSection(section: TSectionName; inherit:boolean=TRUE):PtplSection;
 begin
-  result:=NIL;
+  result := NIL;
   if sections2.containsKey(section) then
    if not sections2.TryGetValue(section, result) then
      result := NIL;
-if inherit and assigned(over) and (result = NIL) then
-  result:=over.getSection(section);
+  if inherit and assigned(over) and (result = NIL) then
+    result := over.getSection(section);
 end; // getSection
 
-function Ttpl.getTxt(const section: String): UnicodeString;
+function Ttpl.getTxt(const section: TSectionName): UnicodeString;
 var
   p: PTplSection;
 begin
@@ -1088,28 +1400,36 @@ begin
   fOver := v;
 end; // setOver
 
-function Ttpl.getSections(): TStringDynArray;
+function Ttpl.getSections(): TSections;
+ {$IFDEF USE_MORMOT_COLLECTIONS}
 var
   i: Integer;
+  d: TSynDictionary;
+ {$ENDIF USE_MORMOT_COLLECTIONS}
 begin
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   result := sections2.Keys.ToArray();
   {$ELSE USE_MORMOT_COLLECTIONS}
-  SetLength(Result, sections2.Data.Keys.Count);
-  if Length(Result) > 0 then
-    for I := Low(Result) to High(Result) do
-      Result[i] := PString(sections2.Data.Keys.ItemPtr(i))^;
+  d := sections2.Data;
+  if Assigned(d) then //and (d.Keys <> NIL) then
+    begin
+      SetLength(Result, d.Keys.Count);
+      if Length(Result) > 0 then
+        for I := Low(Result) to High(Result) do
+//          Result[i] := PString(d.Keys.ItemPtr(i))^;
+          Result[i] := PRawByteString(d.Keys.ItemPtr(i))^;
+    end;
   {$ENDIF USE_MORMOT_COLLECTIONS}
 end;
 
-function Ttpl.me():Ttpl;
+function Ttpl.me(): Ttpl;
 begin
   result := self
 end;
 
 function Ttpl.anyMacroMarkerIn: Boolean;
 begin
-  Result := parserLib.anyMacroMarkerIn(Self.fullTextS);
+  Result := scriptLib.anyMacroMarkerIn(Self.fullTextS);
 end;
 
 constructor Ttlv.create(const data: RawByteString);
@@ -1173,10 +1493,14 @@ result:=true;
 end; // up
 
 function Ttlv.getTotal():integer;
-begin result:=length(whole) end;
+begin
+  result:=length(whole)
+end;
 
 function Ttlv.getCursor():integer;
-begin result:=cur end;
+begin
+  result:=cur
+end;
 
 function Ttlv.getPerc():real;
 begin
@@ -1185,10 +1509,29 @@ else result:=cur/length(whole)
 end; // getPerc
 
 function Ttlv.isOver():boolean;
-begin result:=(cur+8 > bound) end;
+begin
+  result:=(cur+8 > bound)
+end;
 
 function Ttlv.getTheRest(): RawByteString;
-begin result:=substr(whole, cur, bound) end;
+begin
+  result:=substr(whole, cur, bound)
+end;
+
+procedure TconnDataMain.CreateLimiter(max: Integer=MAXINT);
+begin
+  limiter := TspeedLimiter.create(max);
+  conn.limiters.add(limiter);
+//  fs.addLimiter(limiter);
+end;
+
+procedure TconnDataMain.RemoveLimiter;
+begin
+//  fs.removeLimiter(limiter);
+  conn.limiters.remove(limiter);
+  freeAndNIL(limiter);
+
+end;
 
 function TconnDataMain.goodPassword(const pwd: String; s: string; func: ThashFunc): boolean;
 var
@@ -1215,6 +1558,7 @@ begin
   Result := (urlvars.indexOf('recursive') >= 0) or (urlvars.values['search'] > '');
 end;
 
+{
 procedure TconnDataMain.setSessionVar(const k, v: String);
 var
   s: TSession;
@@ -1222,7 +1566,7 @@ begin
   s := sessions.getSession(sessionId);
   s.v[k] := v;
 end;
-
+}
 function TconnDataMain.getFilesSelection(): TStringDynArray;
 var
   i: Integer;
@@ -1266,6 +1610,16 @@ begin
   result := assigned(Self) and (Self.conn.httpState = HCS_POSTING) and (Self.uploadSrc > '')
 end;
 
+function TconnDataMain.getSpeed(): Real;
+begin
+  case conn.httpState of
+    HCS_REPLYING_BODY: Result := conn.speedOut;
+    HCS_POSTING: Result := conn.speedIn;
+   else
+     Result := averageSpeed;
+  end;
+end;
+
 function TconnDataMain.getFileName(): String;
 begin
   if isSendingFile then
@@ -1276,15 +1630,6 @@ begin
     result := '-'
 end;
 
-procedure TconnDataMain.logout();
-begin
-  sessions.destroySession(sessionID);
-  usr:='';
-  pwd:='';
-  account := NIL;
-  conn.delCookie(SESSION_COOKIE);
-end; // logout
-
 procedure TconnDataMain.disconnect(const reason: string);
 begin
   disconnectReason := reason;
@@ -1293,28 +1638,26 @@ end; // disconnect
 
 class function TconnDataMain.getSafeHost(cd: TconnDataMain): String;
 begin
-  result := '';
-  if cd = NIL then
-    exit;
-  if addressmatch(forwardedMask, cd.conn.address) then
-    result := cd.conn.getHeader('x-forwarded-host');
-  if result = '' then
-    result := cd.conn.getHeader('host');
-  result := stripChars(result, ['0'..'9','a'..'z','A'..'Z',':','.','-','_'], TRUE);
+  result := srvUtils.getSafeHost(cd);
 end; // getSafeHost
 
 class function Tsession.getNewSID():TSessionId;
-begin result:=sanitizeSID(b64U(str_(now())+str_(random()))) end;
+begin
+  result:=sanitizeSID(b64U(str_(now())+str_(random())))
+end;
 
 class function Tsession.sanitizeSID(s:TSessionId):TSessionId;
 //begin result:=reReplace(s, '[\D\W]', '', '!') end;
-begin result:=reReplace(s, '[^0-9a-zA-Z]', '', '!') end;
+begin
+  result:=reReplace(s, '[^0-9a-zA-Z]', '', '!')
+end;
 
-constructor Tsession.create(const sid: String='');
+constructor Tsession.create(srv: ThttpSrv; const sid: String='');
 begin
   id := sid;
   if Length(id) < 10 then
     id := getNewSID();
+  fSrv := srv;
 //sessions.Add(id, self);
   init;
 end;
@@ -1333,7 +1676,7 @@ var
   cd: TconnDataMain;
   o: ThttpConn;
 begin
-  for o in srv.conns do
+  for o in fSrv.conns do
   begin
     cd := ThttpConn(o).data;
     if cd.sessionID = self.id then
@@ -1375,8 +1718,9 @@ begin
   keepAlive();
 end;
 
-constructor Tsessions.create;
+constructor Tsessions.create(srv: ThttpSrv);
 begin
+  fSrv := srv;
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   fS2 := TSessId2Sess.Create();
   {$ELSE USE_MORMOT_COLLECTIONS}
@@ -1401,7 +1745,7 @@ end;
 
 function Tsessions.createSession(sId: TSessionId = ''): Tsession;
 begin
-  result := Tsession.create(sid);
+  result := Tsession.create(fSrv, sid);
   fS2.Add(result.id, result);
 end;
 
@@ -1462,7 +1806,8 @@ function Tsessions.onCheckExpired(const aKey; var aValue;
 var
   sId: TSessionId;
 begin
-  if PDateTime(aOpaque)^ > Tsession(aValue).expires then
+  if Tsession(aValue) <> NIL then
+   if PDateTime(aOpaque)^ > Tsession(aValue).expires then
    begin
     sId := Tsession(aValue).id;
     Tsession(aValue).free;
@@ -1470,6 +1815,7 @@ begin
 //    fS2.Items[sId] := NIL;
     fS2.Data.DeleteAt(aIndex);
    end;
+  Result := True;
 end;
 {$ENDIF USE_MORMOT_COLLECTIONS}
 
@@ -1796,29 +2142,18 @@ begin
     end;
 end; // parExistVal
 
-constructor TperIp.create();
+constructor TperIp.create(srv: ThttpSrv);
 begin
+  fSrv := srv;
   limiter := TspeedLimiter.create();
   srv.limiters.add(limiter);
 end;
 
 destructor TperIp.Destroy;
 begin
-  srv.limiters.remove(limiter);
+  fSrv.limiters.remove(limiter);
   limiter.free;
 end;
-
-function objByIP(const ip: String): TperIp;
-var
-  i: integer;
-begin
-  i := ip2obj.indexOf(ip);
-  if i < 0 then
-    i := ip2obj.add(ip);
-  if ip2obj.objects[i] = NIL then
-    ip2obj.objects[i] := TperIp.create();
-  result := ip2obj.objects[i] as TperIp;
-end; // objByIP
 
 function conn2dataMain(p: Tobject): TconnDataMain; inline; overload;
 begin
@@ -1828,7 +2163,7 @@ begin
     result := TconnDataMain((p as ThttpConn).data)
 end; // conn2dataMain
 
-function conn2dataMain(i: integer): TconnDataMain; inline; overload;
+function conn2dataMain(srv: ThttpSrv; i: integer): TconnDataMain; inline; overload;
 begin
   try
     if i < srv.conns.count then
@@ -1849,7 +2184,7 @@ begin
     result := '-'
 end; // getETA
 
-function countIPs(onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
+function countIPs(srv: ThttpSrv; onlyDownloading: boolean=FALSE; usersInsteadOfIps: boolean=FALSE): integer;
 var
   i: integer;
   d: TconnDataMain;
@@ -1859,7 +2194,7 @@ begin
   ips := NIL;
   while i < srv.conns.count do
     begin
-    d := conn2dataMain(i);
+    d := conn2dataMain(srv, i);
     if Assigned(d) and (not onlyDownloading or d.isDownloading) then
       addUniqueString(if_(usersInsteadOfIps, d.usr, d.address), ips);
     inc(i);
@@ -1867,7 +2202,7 @@ begin
   result := length(ips);
 end; // countIPs
 
-function countConnectionsByIP(const ip: String): Integer;
+function countConnectionsByIP(srv: ThttpSrv; const ip: String): Integer;
 var
   i: integer;
 begin
@@ -1875,13 +2210,13 @@ begin
   i:=0;
   while i < srv.conns.count do
     begin
-    if conn2dataMain(i).address = ip then
+    if conn2dataMain(srv, i).address = ip then
       inc(result);
     inc(i);
     end;
 end; // countConnectionsByIP
 
-function getGraphPic(cd: TconnDataMain; w, h: Integer): RawByteString;
+function getGraphPic(cd: TconnDataMain; samplesLenght: Integer; w, h: Integer; var format: TContentTypeType): RawByteString;
 var
   bmp: Tbitmap;
   refresh: string;
@@ -1903,7 +2238,6 @@ begin
   delete(options, pos('?',options), MAXINT);
   bmp := Tbitmap.create;
   bmp.SetSize(w, h);
-//  bmp.SetSize(graphBox.Width, graphBox.Height);
   colors := NIL;
   if options = '' then
     begin
@@ -1921,10 +2255,10 @@ begin
    else
     try
       i := strToInt(chop('x',options));
-      if (i > 0) and (i <= length(graph.samplesIn)) then
+      if (i > 0) and (i <= samplesLenght) then
         bmp.Width:=i;
       i := strToInt(chop('x',options));
-      if (i > 0) and (i <= length(graph.samplesIn)) then
+      if (i > 0) and (i <= samplesLenght) then
         bmp.height := min(i, 300000 div max(1,bmp.width));
       refresh := chop('x',options);
       for i:=1 to 5 do
@@ -1932,7 +2266,16 @@ begin
      except
     end;
   drawGraphOn(bmp.canvas, colors);
-  result:=bmp2str(bmp);
+  if bmp2strWebPAllowed and (ipos('image/webp', cd.conn.getHeader('Accept')) > 0) then
+    begin
+      Result := bmp2strWebP(bmp);
+      format := webpMime;
+    end
+   else
+    begin
+      Result := bmp2str(bmp);
+      format := pngMime;
+    end;
   bmp.free;
   if cd = NIL then
     exit;
@@ -1949,7 +2292,6 @@ begin
   Result := Collections.NewKeyValue<String, UnicodeString>;
  {$ENDIF USE_MORMOT_COLLECTIONS}
 end;
-
 
 
 end.

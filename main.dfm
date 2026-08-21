@@ -1,17 +1,16 @@
 object mainFrm: TmainFrm
-  Left = 778
-  Height = 489
-  Top = 216
-  Width = 1046
+  Left = 774
+  Height = 391
+  Top = 213
+  Width = 837
   Caption = 'HFS ~ HTTP File Server'
-  ClientHeight = 489
-  ClientWidth = 1046
+  ClientHeight = 391
+  ClientWidth = 837
   Color = clBtnFace
-  Constraints.MinHeight = 325
-  Constraints.MinWidth = 488
-  DesignTimePPI = 120
+  Constraints.MinHeight = 260
+  Constraints.MinWidth = 390
   Font.Color = clWindowText
-  Font.Height = -14
+  Font.Height = -11
   Font.Name = 'Tahoma'
   KeyPreview = True
   LCLVersion = '4.8.0.0'
@@ -25,9 +24,9 @@ object mainFrm: TmainFrm
   object graphSplitter: TSplitter
     Cursor = crVSplit
     Left = 0
-    Height = 6
-    Top = 98
-    Width = 1046
+    Height = 5
+    Top = 78
+    Width = 837
     Align = alTop
     AutoSnap = False
     Beveled = True
@@ -37,10 +36,10 @@ object mainFrm: TmainFrm
   end
   object graphBox: TPaintBox
     Left = 0
-    Height = 38
+    Height = 30
     Hint = 'Pink = Out'#13#10'Yellow = In'
-    Top = 60
-    Width = 1046
+    Top = 48
+    Width = 837
     Align = alTop
     ParentShowHint = False
     PopupMenu = graphMenu
@@ -49,15 +48,15 @@ object mainFrm: TmainFrm
   end
   object topToolbar: TToolBar
     Left = 0
-    Height = 30
+    Height = 24
     Top = 0
-    Width = 1046
+    Width = 837
     AutoSize = True
-    ButtonHeight = 28
+    ButtonHeight = 22
     ButtonWidth = 0
     Caption = 'topToolbar'
     Font.Color = clWindowText
-    Font.Height = -15
+    Font.Height = -12
     Font.Name = 'Tahoma'
     Images = IconsDM.images
     List = True
@@ -78,7 +77,7 @@ object mainFrm: TmainFrm
       OnClick = menuBtnClick
     end
     object portBtn: TToolButton
-      Left = 89
+      Left = 76
       Top = 2
       AutoSize = True
       Caption = 'Port: any'
@@ -86,23 +85,23 @@ object mainFrm: TmainFrm
       OnClick = portBtnClick
     end
     object Sep2TBtn: TToolButton
-      Left = 180
-      Height = 28
+      Left = 155
+      Height = 8
       Top = 2
       Caption = 'Sep2'
       ImageIndex = 15
       Style = tbsSeparator
     end
     object Sep3TBtn: TToolButton
-      Left = 188
-      Height = 28
+      Left = 161
+      Height = 8
       Top = 2
       Caption = 'Sep3'
       ImageIndex = 16
       Style = tbsSeparator
     end
     object modeBtn: TToolButton
-      Left = 196
+      Left = 167
       Hint = 'Click to switch'#13#10'F5 on keyboard'
       Top = 2
       AutoSize = True
@@ -112,8 +111,8 @@ object mainFrm: TmainFrm
       OnClick = modeBtnClick
     end
     object SepTB1: TToolButton
-      Left = 81
-      Height = 28
+      Left = 70
+      Height = 8
       Top = 2
       Caption = 'SepTB1'
       ImageIndex = 13
@@ -121,7 +120,7 @@ object mainFrm: TmainFrm
       Wrap = True
     end
     object startBtn: TToolButton
-      Left = 372
+      Left = 315
       Hint = 'Click to switch ON'#13'F4 on keyboard'
       Top = 2
       AutoSize = True
@@ -132,7 +131,7 @@ object mainFrm: TmainFrm
       OnClick = startBtnClick
     end
     object abortBtn: TToolButton
-      Left = 710
+      Left = 602
       Top = 2
       AutoSize = True
       Caption = 'Abort file addition'
@@ -141,7 +140,7 @@ object mainFrm: TmainFrm
       OnClick = abortBtnClick
     end
     object restoreCfgBtn: TToolButton
-      Left = 552
+      Left = 467
       Top = 2
       Caption = 'Restore my options'
       ImageIndex = 34
@@ -149,7 +148,7 @@ object mainFrm: TmainFrm
       OnClick = restoreCfgBtnClick
     end
     object updateBtn: TToolButton
-      Left = 852
+      Left = 728
       Top = 2
       AutoSize = True
       Caption = 'Update now'
@@ -160,15 +159,15 @@ object mainFrm: TmainFrm
   end
   object urlToolbar: TToolBar
     Left = 0
-    Height = 30
-    Top = 30
-    Width = 1046
+    Height = 24
+    Top = 24
+    Width = 837
     AutoSize = True
-    ButtonHeight = 28
-    ButtonWidth = 152
+    ButtonHeight = 22
+    ButtonWidth = 122
     EdgeBorders = [ebBottom]
     Font.Color = clWindowText
-    Font.Height = -15
+    Font.Height = -12
     Font.Name = 'Tahoma'
     List = True
     ParentFont = False
@@ -184,15 +183,15 @@ object mainFrm: TmainFrm
       OnClick = browseBtnClick
     end
     object urlBox: TEdit
-      Left = 153
-      Height = 26
+      Left = 123
+      Height = 22
       Top = 0
-      Width = 541
+      Width = 433
       TabOrder = 0
       OnChange = urlBoxChange
     end
     object copyBtn: TToolButton
-      Left = 694
+      Left = 556
       Top = 0
       AutoSize = True
       Caption = 'Copy to clipboard'
@@ -202,35 +201,35 @@ object mainFrm: TmainFrm
   end
   object centralPnl: TPanel
     Left = 0
-    Height = 385
-    Top = 104
-    Width = 1046
+    Height = 308
+    Top = 83
+    Width = 837
     Align = alClient
     BevelOuter = bvNone
-    ClientHeight = 385
-    ClientWidth = 1046
+    ClientHeight = 308
+    ClientWidth = 837
     Font.Color = clWindowText
-    Font.Height = -15
+    Font.Height = -12
     Font.Name = 'Tahoma'
     ParentBackground = False
     ParentFont = False
     TabOrder = 0
     object splitV: TSplitter
-      Left = 391
-      Height = 247
+      Left = 313
+      Height = 197
       Top = 0
-      Width = 4
+      Width = 3
       Beveled = True
-      Constraints.MaxWidth = 4
-      Constraints.MinWidth = 4
+      Constraints.MaxWidth = 3
+      Constraints.MinWidth = 3
       OnMoved = splitVMoved
     end
     object splitH: TSplitter
       Cursor = crVSplit
       Left = 0
-      Height = 6
-      Top = 247
-      Width = 1046
+      Height = 5
+      Top = 197
+      Width = 837
       Align = alBottom
       Beveled = True
       MinSize = 1
@@ -238,32 +237,33 @@ object mainFrm: TmainFrm
       OnMoved = splitHMoved
     end
     object logPnl: TPanel
-      Left = 395
-      Height = 247
+      Left = 316
+      Height = 197
       Top = 0
-      Width = 651
+      Width = 521
       Align = alClient
       BevelOuter = bvNone
-      ClientHeight = 247
-      ClientWidth = 651
+      ClientHeight = 197
+      ClientWidth = 521
       ParentBackground = False
       TabOrder = 1
+      OnResize = logPnlResize
       object logTitle: TPanel
         Left = 0
-        Height = 29
+        Height = 23
         Top = 0
-        Width = 651
+        Width = 521
         Align = alTop
         BevelOuter = bvNone
-        ClientHeight = 29
-        ClientWidth = 651
+        ClientHeight = 23
+        ClientWidth = 521
         ParentBackground = False
         TabOrder = 0
         object titlePnl: TPanel
           Left = 0
-          Height = 29
+          Height = 23
           Top = 0
-          Width = 360
+          Width = 281
           Align = alClient
           BevelOuter = bvNone
           Caption = 'Log'
@@ -271,32 +271,32 @@ object mainFrm: TmainFrm
           TabOrder = 0
         end
         object logToolbar: TPanel
-          Left = 360
-          Height = 29
+          Left = 281
+          Height = 23
           Top = 0
-          Width = 291
+          Width = 240
           Align = alRight
           AutoSize = True
           BevelOuter = bvNone
-          ClientHeight = 29
-          ClientWidth = 291
+          ClientHeight = 23
+          ClientWidth = 240
           ParentBackground = False
           TabOrder = 1
           object collapsedPnl: TPanel
             Left = 0
-            Height = 29
+            Height = 23
             Top = 0
             Width = 23
             Align = alRight
             AutoSize = True
             BevelOuter = bvNone
-            ClientHeight = 29
+            ClientHeight = 23
             ClientWidth = 23
             ParentBackground = False
             TabOrder = 0
             object expandBtn: TSpeedButton
               Left = 0
-              Height = 29
+              Height = 23
               Hint = 'Expand toolbar'
               Top = 0
               Width = 23
@@ -327,22 +327,22 @@ object mainFrm: TmainFrm
           end
           object expandedPnl: TPanel
             Left = 23
-            Height = 29
+            Height = 23
             Top = 0
-            Width = 268
+            Width = 217
             Align = alRight
             AutoSize = True
             BevelOuter = bvNone
-            ClientHeight = 29
-            ClientWidth = 268
+            ClientHeight = 23
+            ClientWidth = 217
             ParentBackground = False
             TabOrder = 1
             object openFilteredLog: TSpeedButton
-              Left = 236
-              Height = 29
+              Left = 191
+              Height = 23
               Hint = 'Copy to editor only lines matched by the search pattern'
               Top = 0
-              Width = 32
+              Width = 26
               Align = alRight
               Enabled = False
               Glyph.Data = {
@@ -403,11 +403,11 @@ object mainFrm: TmainFrm
               OnClick = openLogBtnClick
             end
             object openLogBtn: TSpeedButton
-              Left = 204
-              Height = 29
+              Left = 165
+              Height = 23
               Hint = 'Copy to editor'
               Top = 0
-              Width = 32
+              Width = 26
               Align = alRight
               Flat = True
               Glyph.Data = {
@@ -452,10 +452,10 @@ object mainFrm: TmainFrm
             end
             object collapseBtn: TSpeedButton
               Left = 0
-              Height = 29
+              Height = 23
               Hint = 'Collapse toolbar'
               Top = 0
-              Width = 26
+              Width = 21
               Align = alRight
               Flat = True
               Glyph.Data = {
@@ -481,33 +481,33 @@ object mainFrm: TmainFrm
               OnClick = collapseBtnClick
             end
             object Bevel1: TBevel
-              Left = 26
-              Height = 29
+              Left = 21
+              Height = 23
               Top = 0
               Width = 2
               Align = alRight
             end
             object searchPnl: TPanel
-              Left = 28
-              Height = 29
+              Left = 23
+              Height = 23
               Top = 0
-              Width = 176
+              Width = 142
               Align = alRight
               AutoSize = True
               BevelOuter = bvNone
-              ClientHeight = 29
-              ClientWidth = 176
+              ClientHeight = 23
+              ClientWidth = 142
               ParentBackground = False
               TabOrder = 0
               object logSearchBox: TLabeledEdit
-                Left = 47
-                Height = 26
+                Left = 39
+                Height = 22
                 Hint = 'Wildcards allowed'
                 Top = 1
-                Width = 129
+                Width = 103
                 Anchors = [akTop, akRight]
-                EditLabel.Height = 26
-                EditLabel.Width = 44
+                EditLabel.Height = 22
+                EditLabel.Width = 37
                 EditLabel.Caption = 'Search'
                 LabelPosition = lpLeft
                 ParentShowHint = False
@@ -517,10 +517,10 @@ object mainFrm: TmainFrm
                 OnKeyPress = logSearchBoxKeyPress
               end
               object logUpDown: TUpDown
-                Left = -29
-                Height = 30
+                Left = -22
+                Height = 24
                 Top = 0
-                Width = 20
+                Width = 16
                 Anchors = [akTop, akRight]
                 Max = 30000
                 Min = -30000
@@ -535,21 +535,21 @@ object mainFrm: TmainFrm
     end
     object filesPnl: TPanel
       Left = 0
-      Height = 247
+      Height = 197
       Top = 0
-      Width = 391
+      Width = 313
       Align = alLeft
       BevelOuter = bvNone
       Caption = 'filesPnl'
-      ClientHeight = 247
-      ClientWidth = 391
+      ClientHeight = 197
+      ClientWidth = 313
       ParentBackground = False
       TabOrder = 0
       object filesTitle: TPanel
         Left = 0
-        Height = 29
+        Height = 23
         Top = 0
-        Width = 391
+        Width = 313
         Align = alTop
         BevelOuter = bvNone
         Caption = 'Virtual File System'
@@ -558,9 +558,9 @@ object mainFrm: TmainFrm
       end
       object filesBox: TTreeView
         Left = 0
-        Height = 218
-        Top = 29
-        Width = 391
+        Height = 174
+        Top = 23
+        Width = 313
         Align = alClient
         Images = IconsDM.images
         PopupMenu = filemenu
@@ -585,24 +585,24 @@ object mainFrm: TmainFrm
     end
     object connPnl: TPanel
       Left = 0
-      Height = 132
-      Top = 253
-      Width = 1046
+      Height = 106
+      Top = 202
+      Width = 837
       Align = alBottom
       BevelOuter = bvNone
-      ClientHeight = 132
-      ClientWidth = 1046
+      ClientHeight = 106
+      ClientWidth = 837
       ParentBackground = False
       TabOrder = 2
       object sbar: TStatusBar
         Left = 0
-        Height = 29
-        Top = 103
-        Width = 1046
+        Height = 23
+        Top = 83
+        Width = 837
         Panels = <        
           item
             Text = 'Init status bar'
-            Width = 2500
+            Width = 2000
           end>
         SimplePanel = False
         OnDblClick = sbarDblClick
@@ -610,42 +610,40 @@ object mainFrm: TmainFrm
       end
       object connBox: TListView
         Left = 0
-        Height = 103
+        Height = 83
         Top = 0
-        Width = 1046
+        Width = 837
         Align = alClient
         AutoWidthLastColumn = True
         Columns = <        
           item
             Caption = 'IP address'
             ImageIndex = 0
-            Width = 258
+            Width = 206
           end        
           item
             Alignment = taCenter
             Caption = 'File'
             ImageIndex = 7
-            Width = 258
+            Width = 206
           end        
           item
             Alignment = taCenter
             Caption = 'Status'
-            Width = 258
+            Width = 206
           end        
           item
             Alignment = taCenter
             Caption = 'Speed'
-            Width = 62
           end        
           item
             Alignment = taCenter
             Caption = 'Time left'
-            Width = 62
           end        
           item
             Alignment = taCenter
             Caption = 'Progress'
-            Width = 148
+            Width = 119
           end>
         ColumnClick = False
         GridLines = True
@@ -668,8 +666,8 @@ object mainFrm: TmainFrm
     Images = IconsDM.images
     OwnerDraw = True
     OnPopup = filemenuPopup
-    Left = 160
-    Top = 210
+    Left = 128
+    Top = 168
     object Addfiles1: TMenuItem
       Caption = 'Add files...'
       OnClick = Addfiles1Click
@@ -803,8 +801,8 @@ object mainFrm: TmainFrm
   object menu: TPopupMenu
     Images = IconsDM.images
     OnPopup = menuPopup
-    Left = 120
-    Top = 10
+    Left = 96
+    Top = 8
     object SelfTest1: TMenuItem
       Caption = 'Self Test'
       ImageIndex = 34
@@ -892,6 +890,11 @@ object mainFrm: TmainFrm
       object compressedbrowsingChk: TMenuItem
         AutoCheck = True
         Caption = 'Compressed browsing'
+        Checked = True
+      end
+      object CompressZIPstreamsChk: TMenuItem
+        AutoCheck = True
+        Caption = 'Compress ZIP streams'
         Checked = True
       end
       object modalOptionsChk: TMenuItem
@@ -1674,8 +1677,8 @@ object mainFrm: TmainFrm
   object connmenu: TPopupMenu
     Images = IconsDM.images
     OnPopup = connmenuPopup
-    Left = 310
-    Top = 400
+    Left = 248
+    Top = 320
     object Kickconnection1: TMenuItem
       Caption = 'Kick connection'
       OnClick = Kickconnection1Click
@@ -1718,14 +1721,14 @@ object mainFrm: TmainFrm
     Enabled = False
     Interval = 100
     OnTimer = timerEvent
-    Left = 60
-    Top = 140
+    Left = 48
+    Top = 112
   end
   object logmenu: TPopupMenu
     Images = IconsDM.images
     OnPopup = logmenuPopup
-    Left = 440
-    Top = 199
+    Left = 352
+    Top = 159
     object Logwhat1: TMenuItem
       Caption = 'Log what'
       object LogtimeChk: TMenuItem
@@ -1910,8 +1913,8 @@ object mainFrm: TmainFrm
     end
   end
   object graphMenu: TPopupMenu
-    Left = 630
-    Top = 60
+    Left = 504
+    Top = 48
     object Reset1: TMenuItem
       Caption = 'Reset'
       OnClick = Reset1Click

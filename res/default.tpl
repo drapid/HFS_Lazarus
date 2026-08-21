@@ -1176,9 +1176,7 @@ function music() {
 
     playButton.onclick = function() {
         if (audio.paused) {
-            if (!(audio.src == audio.src) || !audio.src) {
-                // Не запускаем воспроизведение сразу
-                // Просто устанавливаем текущий трек
+            if (!(audio.src==audio.src) || !audio.src) {
                 audio.src = shuffle ? 
                 links[Math.floor(Math.random() * links.length)] : 
                 links[currentIndex];
@@ -1238,7 +1236,7 @@ function music() {
         localStorage.setItem('last', audio.src + '#t=' + audio.currentTime);
     });
 
-    // Support Media Session API - добавляем все треки в список проигрывания
+    // Support Media Session API
     if ('mediaSession' in navigator) {
         // Create tracklist for Media Session
         const mediaTracks = links.map((url, index) => ({

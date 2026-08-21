@@ -5,7 +5,9 @@ interface
 
 uses
   Windows,
+ {$IFDEF USE_MORMOT}
   mormot.core.base,
+ {$ENDIF USE_MORMOT}
   SysUtils, Types, SyncObjs,
  {$IFDEF FMX}
   FMX.Types,
@@ -25,18 +27,20 @@ uses
   {$IFDEF HFS_GIF_IMAGES}
   Vcl.Imaging.gifimg,
   {$ELSE ~HFS_GIF_IMAGES}
-  Vcl.Imaging.gifimg,
+//  Vcl.Imaging.gifimg,
   Vcl.Imaging.pngImage,
   {$ENDIF HFS_GIF_IMAGES}
   Vcl.VirtualImageList, Vcl.BaseImageCollection,
-  Vcl.ImageCollection, Vcl.ImgList,
+  Vcl.ImageCollection,
  {$ENDIF ~FPC}
  {$ENDIF FMX}
  Classes, StdCtrls
   ;
 
 type
+ {$IFDEF FPC}
   TPNGImage = TPortableNetworkGraphic; // deprecated
+ {$ENDIF FPC}
 
   { TIconsDM }
 
@@ -53,11 +57,7 @@ type
 
   public
     { Public declarations }
- {$IFDEF FMX}
-    systemimages: TImageList;
- {$ELSE ~FMX}
-    systemimages: Timagelist;    // system icons
- {$ENDIF FMX}
+    systemimages: TImageList;    // system icons
     function GetBitmap(idx: Integer; Size: Integer): TBitmap;
     function getImageIndexForFile(const fn: UnicodeString): integer;
     function getBitmapForFile(const fn: UnicodeString): TBitmap;
@@ -82,7 +82,7 @@ type
   function bmp2str(bmp: Tbitmap): RawByteString;
   function pic2str(idx: integer; imgSize: Integer): RawByteString;
   function pic2hash(idx: integer; imgSize: Integer): RawByteString; OverLoad;
-  function pic2hash(pic: RawByteString): RawByteString; OverLoad;
+  function pic2hash(const pic: RawByteString): RawByteString; OverLoad;
   function str2pic(const s: RawByteString; imgSize: Integer): integer;
   function strGif2pic(const gs: RawByteString; imgSize: Integer): integer;
   function ico2str(hndl: THandle; icoNdx: Integer; imgSize: Integer): RawByteString;
@@ -125,9 +125,14 @@ uses
   ansiStrings,
  {$ENDIF UNICODE}
   ShellAPI,
+  {$IFNDEF HFS_GIF_IMAGES}
   litegif1,
+  {$ENDIF ~HFS_GIF_IMAGES}
   WebPHelpersD32, libwebpD,
   RnQCrypt, RDUtils,
+ {$IFNDEF USE_MORMOT}
+  srvUtils,
+ {$ENDIF USE_MORMOT}
   srvVars;
 
 const
@@ -345,10 +350,11 @@ end;
 function gif2png(const s: RawByteString): RawByteString;
 var
  {$IFNDEF FMX}
+  {$IFDEF HFS_GIF_IMAGES}
 //  gif: TgifImage;
   Gif: TGif;
+  {$ENDIF HFS_GIF_IMAGES}
  {$ENDIF ~FMX}
-//  ss: TAnsiStringStream;
   ss: TRawByteStringStream;
   bmp: TBitmap;
 begin
@@ -475,6 +481,13 @@ begin
     begin
       fn := exePath + clibWebpName2;
       h := LoadLibraryW(PWideChar(fn));
+     {$IFDEF CPUX64}
+      if h = 0 then
+        begin
+          fn := exePath + clibWebpName3;
+          h := LoadLibraryW(PWideChar(fn));
+        end;
+     {$ENDIF CPUX64}
     end;
   if h <> 0 then
   begin
@@ -509,14 +522,11 @@ type
  {$IFNDEF FMX}
 var
   str: TRawByteStringStream;
-//  RowInOut: PRGBAArray;
-//  RowAlpha: PByteArray;
  {$ENDIF FMX}
 begin
  {$IFDEF FMX}
   result := png2str(bmp);
  {$ELSE ~FMX}
-//  png := TPNGImage.Create();
   str := TRawByteStringStream.Create;
   try
     WebpHelpersD32.WebpEncode(TStream(str), bmp);
@@ -576,14 +586,22 @@ begin
   pic := pic2str(idx, imgSize);
   if pic = '' then
     Exit('');
+ {$IFDEF USE_MORMOT}
   Result := IntToHexA(crc32cHash(pic), 4);
+ {$ELSE !USE_MORMOT}
+  Result := IntToHexA(getCRC(pic), 4);
+ {$ENDIF USE_MORMOT}
 end;
 
-function pic2hash(pic: RawByteString): RawByteString;
+function pic2hash(const pic: RawByteString): RawByteString;
 begin
   if pic = '' then
     Exit('');
+ {$IFDEF USE_MORMOT}
   Result := IntToHexA(crc32cHash(pic), 4);
+ {$ELSE !USE_MORMOT}
+  Result := IntToHexA(getCRC(pic), 4);
+ {$ENDIF USE_MORMOT}
 end;
 
 

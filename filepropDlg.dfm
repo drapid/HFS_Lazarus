@@ -13,6 +13,7 @@ object filepropFrm: TfilepropFrm
   KeyPreview = True
   Position = poMainFormCenter
   ShowHint = True
+  LCLVersion = '4.8.0.0'
   OnClose = FormClose
   OnKeyPress = FormKeyPress
   OnShow = FormShow

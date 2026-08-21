@@ -3,10 +3,11 @@ unit filepropDlg;
 interface
 
 uses
-  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  //Windows, Messages,
+  SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, StdCtrls, ExtCtrls, types,
   ComboEx, math,
-  hslib, serverLib, srvClassesLib, fileLib, hfsGlobal;
+  hslib, serverLib, srvClassesLib, fileLib;
 
 type
 
@@ -461,10 +462,7 @@ var
     or not cb.Enabled
     or not cb.Visible then exit;
 
-    if cb.Checked then
-      include(f.flags, flag)
-     else
-      exclude(f.flags, flag);
+    f.setAttr(flag, cb.Checked);
   end; // applyFlag
 
   procedure applyText(var v: String; box:TCustomEdit); OverLoad;

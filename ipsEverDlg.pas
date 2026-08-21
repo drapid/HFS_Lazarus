@@ -3,7 +3,8 @@ unit ipsEverDlg;
 interface
 
 uses
-  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Windows, //Messages,
+  SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls;
 
 type
@@ -34,15 +35,15 @@ uses
 
 procedure TipsEverFrm.resetBtnClick(Sender: TObject);
 begin
-ipsEverConnected.clear();
-refreshData();
+  mainFrm.fileSrv.ipsEverConnected.clear();
+  refreshData();
 end;
 
 procedure TipsEverFrm.editBtnClick(Sender: TObject);
 var
   fn: string;
 begin
-  fn:=saveTempFile(ipsEverConnected.text);
+  fn := saveTempFile(mainFrm.fileSrv.ipsEverConnected.text);
   if renameFile(fn, fn+'.txt') then
     exec(fn+'.txt')
    else
@@ -54,8 +55,8 @@ begin refreshData() end;
 
 procedure TipsEverFrm.refreshData();
 begin
-  ipsBox.text := ipsEverConnected.text;
-  totalLbl.caption := format('Total: %d', [ipsEverConnected.count]);
+  ipsBox.text := mainFrm.fileSrv.ipsEverConnected.text;
+  totalLbl.caption := format('Total: %d', [mainFrm.fileSrv.ipsEverConnected.count]);
   repaintTray(mainFrm.fileSrv);
 end; // refreshData
 

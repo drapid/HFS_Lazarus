@@ -1,4 +1,4 @@
-@set BB=324
+@set BB=325
 @IF "%1" EQU "x64" goto x64
 @ECHO Processing x86
 @copy bin\Win32\hfs_i386.exe "bin\Win32\HFS%BB%_RDfpc.exe"

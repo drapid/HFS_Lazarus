@@ -8,7 +8,10 @@
 @IF EXIST ".\Units\*.dcu" del .\Units\*.dcu
 @IF EXIST ".\UnitsWin32\*.dcu" del .\UnitsWin32\*.dcu
 @IF EXIST ".\UnitsWin64\*.dcu" del .\UnitsWin64\*.dcu
-@IF EXIST ".\Units\x86_64-win64\*.dcu" del .\Units\x86_64-win64\*.dcu
+@IF EXIST ".\Units\i386-win32\*.o" del .\Units\i386-win32\*.o
+@IF EXIST ".\Units\i386-win32\*.ppu" del .\Units\i386-win32\*.ppu
+@IF EXIST ".\Units\i386-win32\*.rsj" del .\Units\i386-win32\*.rsj
+@IF EXIST ".\Units\i386-win32\*.dfm" del .\Units\i386-win32\*.dfm
 @IF EXIST ".\Units\x86_64-win64\*.o" del .\Units\x86_64-win64\*.o
 @IF EXIST ".\Units\x86_64-win64\*.ppu" del .\Units\x86_64-win64\*.ppu
 @IF EXIST "Prefs\__history\*" del /q Prefs\__history\*

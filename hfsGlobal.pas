@@ -3,13 +3,8 @@ unit hfsGlobal;
 
 interface
 uses
-  System.UITypes,
- {$IFDEF FMX}
-  FMX.Graphics,
- {$ELSE ~FMX}
   Graphics,
- {$ENDIF FMX}
-  Types, SysUtils, srvConst;
+  SysUtils, srvConst;
 
 const
 {$I RnQBuiltTime.inc}
@@ -28,7 +23,6 @@ const
   STATUSBAR_REFRESH = 10; // tenth of second
   MAX_RECENT_FILES = 5;
   MANY_ITEMS_THRESHOLD = 1000;
-  YESNO: array [boolean] of string=('no','yes');
 //  LIBS_DOWNLOAD_URL = 'http://rejetto.com/hfs/';
   LIBS_DOWNLOAD_URL = 'http://libs.rnq.ru/';
   HFS_GUIDE_URL = 'http://www.rejetto.com/hfs/guide/';

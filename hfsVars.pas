@@ -3,16 +3,11 @@ unit hfsVars;
 
 interface
 uses
- {$IFDEF FMX}
-  FMX.Graphics, System.UITypes,
-  FMX.TreeView,
- {$ELSE ~FMX}
   Graphics,
-//  Forms,
   Controls,
   ComCtrls,
- {$ENDIF FMX}
-  Classes, Types, iniFiles, hsLib, srvClassesLib, hfsGlobal;
+  Classes, Types, //iniFiles,
+  hsLib, srvClassesLib, hfsGlobal;
 
 // global variables
 var
@@ -44,7 +39,7 @@ var
 //  tpl_help: string;
   lastWindowRect: Trect;
   tplEditor: UnicodeString;
-  tplLast: Tdatetime;
+  tplLast, tplNMLast: Tdatetime;
   tplImport: boolean;
   eventScriptsLast, runScriptLast: Tdatetime;
   graphInEasyMode: boolean;
@@ -92,6 +87,14 @@ const
  {$ENDIF}
 const
   UPDATE_ON_DISK = 'hfs.updateinfo.txt';
+
+{$IFNDEF FPC}
+const
+  themeDark  = 'Glow';
+  themeLight = 'Aqua Light Slate';
+{$ENDIF !FPC}
+var
+  themeSelected: String;
 
 const
   trayShowCode: array[TTrayShows] of string = ('downloads', 'connections', 'uploads', 'hits', 'ips', 'ips-ever', '');

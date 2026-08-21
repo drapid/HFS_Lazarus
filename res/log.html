@@ -1,45 +1,137 @@
 ﻿<html>
-<head><style>
-body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; padding: 5px; }
-#log {
-  overflow-y: auto; 
-  font-family: Consolas, monospace;
-  font-size: 9pt;
+<head>
+<style>
+  /* ===== Light (main) ===== */
+  html {
+    var(bg):        #ffffff;
+    var(text):      #1a1a1a;
+    var(time):      #c00000;
+    var(addr):      #008000;
+    var(msg):       #1a1a1a;
+    var(cont):      #0055aa;
+    var(selection): #cce0ff;
+  }
+
+  /* ===== System: dark (only if theme NOT set manualy) ===== */
+  @media ui-ambience == "dark" {
+    html:not([theme]) {
+      var(bg):        #1e1e1e;
+      var(text):      #d4d4d4;
+      var(time):      #ff6b6b;
+      var(addr):      #6bcb77;
+      var(msg):       #d4d4d4;
+      var(cont):      #6bb3ff;
+      var(selection): #264f78;
+    }
+  }
+
+  /* ===== Manualy dark ===== */
+  html[theme="dark"] {
+    var(bg):        #1e1e1e;
+    var(text):      #d4d4d4;
+    var(time):      #ff6b6b;
+    var(addr):      #6bcb77;
+    var(msg):       #d4d4d4;
+    var(cont):      #6bb3ff;
+    var(selection): #264f78;
+  }
+
+  /* ===== Manualy light (If system is dark) ===== */
+  html[theme="light"] {
+    var(bg):        #ffffff;
+    var(text):      #1a1a1a;
+    var(time):      #c00000;
+    var(addr):      #008000;
+    var(msg):       #1a1a1a;
+    var(cont):      #0055aa;
+    var(selection): #cce0ff;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  #log {
+    height: 100%;
+    overflow-y: auto;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+    white-space: pre-wrap;
+    word-break: break-all;
+    padding: 4px 6px;
+    background: var(bg);
+    color: var(text);
+  }
+
+  .log-head {
+  display: block;
+  flow: horizontal;      /* Sciter */
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  }
+
+.log-title {
+  width: *;              /* Sciter: растянуть */
   white-space: pre-wrap;
   word-break: break-all;
+  padding-right: 6px;
+  margin: 0;
+  padding: 0 6px 0 0;
+ }
+
+.spoiler-btn {
+  display: block;
+  width: 1.6em;
+  height: 1.6em;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #888;
+  border-radius: 3px;
+  background: var(bg, #eee);
+  color: var(text, #333);
+  font-family: sans-serif;
+  font-size: 12pt;
+  line-height: 1.4em;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0.85;
 }
 
-.log-msg {
-  margin: 0 0 2px 0;
-  line-height: 1.25;
-}
+.spoiler-btn:hover { opacity: 1; }
 
-.time {
-  color: red;
-  font-weight: bold;
-}
+  .log-msg { margin: 0 0 1px 0; line-height: 1.25; }
+  .time    { color: var(time); font-weight: bold; }
+  .addr    { color: var(addr); }
+  .msg     { color: var(msg); }
+  .cont-wrap {
+    margin: 0 0 0 1em;   /* без отступа сверху */
+    padding: 0;
+   }
+  .cont    {
+    color: var(cont);
+    margin-left: 1em;
+    white-space: pre-wrap;
+    margin: 0;
+    padding: 0;
+    line-height: 1.25;
+   }
+</style>
 
-.addr {
-  color: #008000;
-}
-
-.msg {
-}
-
-.cont {
-  color: blue;
-  margin-left: 1em;
-  white-space: pre-wrap;
-}' +
-'</style>
 <script type="module">
   const logBody = document.$("#log");
-  const MAX_LINES = 1000; // аналог logMaxLines
+  const MAX_LINES = 1000;
+  const PREVIEW_LINES = 2;
+  let lastClickedIP = "";
 
-  // Экранирование
+  // "system" | "light" | "dark"
+  let themeMode = "system";
+
   function esc(s) {
     if (!s) return "";
-    return s
+    return String(s)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -47,45 +139,155 @@ body { font-family: "Segoe UI", Tahoma, sans-serif; font-size: 13px; margin: 0; 
       .replace(/'/g, "&#39;");
   }
 
-  // Main function to exec from Pascal
-  globalThis.addLogEvent = function(data) {
-    // data can come as string JSON or as object
-    if (typeof data === "string") {
-      try { data = JSON.parse(data); } catch(e) { return; }
+  // Apply current mode
+  function applyTheme() {
+    const html = document.documentElement;
+    if (themeMode === "system") {
+      // remove attribute → works @media ui-ambience
+      html.removeAttribute("theme");
+    } else {
+      // select theme → @media not works
+      html.setAttribute("theme", themeMode);
     }
+  }
 
-    const timePart = data.ts 
-      ? `<span class="time">${esc(data.ts)}</span> ` 
-      : "";
-
-    const addrPart = data.addr 
-      ? `<span class="addr">${esc(data.addr)}</span> ` 
-      : "";
-
-    const colorStyle = data.color 
-      ? ` style="color:${esc(data.color)}"` 
-      : "";
-
-    const msgPart = `<span class="msg"${colorStyle}>${esc(data.msg)}</span>`;
-
-    const contPart = data.cont 
-      ? `<div class="cont">${esc(data.cont)}</div>` 
-      : "";
-
-    const html = `<div class="log-msg">${timePart}${addrPart}${msgPart}${contPart}</div>`;
-
-    // Quick addition
-    logBody.insertAdjacentHTML("beforeend", html);
-
-    // Scroll
-    const last = logBody.lastElementChild;
-    if (last) last.scrollIntoView({behavior: "smooth", block: "end"});
-
-    // Trim elements
-    while (logBody.children.length > MAX_LINES) {
-      logBody.firstElementChild.remove();
-    }
+  /**
+   * Exec from Pascal:
+   *   setTheme("system")  — as in OS, auto-switch enabled
+   *   setTheme("light")   — Allways light, auto-switch disabled
+   *   setTheme("dark")    — Allways dark, auto-switch disabled
+   */
+  globalThis.setTheme = function(mode) {
+    if (mode !== "light" && mode !== "dark") mode = "system";
+    themeMode = mode;
+    applyTheme();
   };
+
+  // At start use As in system
+  applyTheme();
+
+  try {
+    Window.this.on("mediachange", function() {
+      if (themeMode === "system") applyTheme();
+    });
+  } catch (e) {}
+
+function lineCount(s) {
+  if (!s) return 0;
+  return String(s).split(/\r\n|\n|\r/).length;
+}
+
+function previewText(s, maxLines) {
+  const lines = String(s).split(/\r\n|\n|\r/);
+  if (lines.length <= maxLines) return s;
+  return lines.slice(0, maxLines).join("\n");
+}
+
+  // ===== Logging =====
+  globalThis.addLogEvent = function(data) {
+    if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch(e) {
+      console.error("addLogEvent JSON error:", e, data);
+      // fallback — show data as is
+      logBody.insertAdjacentHTML("beforeend",
+        `<div class="log-msg"><span class="msg" style="color:red">[bad JSON] ${esc(String(data).slice(0, 200))}</span></div>`);
+      return;
+    }
+  }
+
+    const pureIP = data.ip || "";
+    const timePart = data.ts ? `<span class="time">${esc(data.ts)}</span> ` : "";
+    const addrPart = data.addr ? `<span class="addr">${esc(data.addr)}</span> ` : "";
+
+    let colorStyle = "";
+    if (data.color) {
+      const c = data.color.startsWith("#") ? data.color
+                : (data.color.match(/#[0-9a-fA-F]{6}/) || [])[0];
+      if (c) colorStyle = ` style="color:${esc(c)}"`;
+    }
+
+const msgPart = `<span class="msg"${colorStyle}>${esc(data.msg || "")}</span>`;
+  const cont = data.cont || "";
+  const long = lineCount(cont) > PREVIEW_LINES;
+
+  // button in header on the rigth
+  const btnHtml = long
+    ? `<button type="button" class="spoiler-btn" title="Показать / скрыть">▾</button>`
+    : "";
+
+  let contHtml = "";
+  if (cont) {
+    if (long) {
+      contHtml =
+        `<div class="cont-wrap collapsed">` +
+          `<pre class="cont">${esc(previewText(cont, PREVIEW_LINES))}</pre>` +
+          `<div class="cont-full" style="display:none">${esc(cont)}</div>` +
+        `</div>`;
+    } else {
+      contHtml = `<div class="cont-wrap"><pre class="cont">${esc(cont)}</pre></div>`;
+    }
+  }
+
+    logBody.insertAdjacentHTML("beforeend",
+      `<div class="log-msg" data-ip="${esc(pureIP)}">` +
+      `<div class="log-head">` +
+        `<div class="log-title">${timePart}${addrPart}${msgPart}</div>` +
+        btnHtml +
+      `</div>` +
+      contHtml +
+    `</div>`);
+
+  const last = logBody.lastElementChild;
+  if (last) last.scrollIntoView({ block: "end" });
+
+  while (logBody.children.length > MAX_LINES)
+    logBody.firstElementChild.remove();
+};
+
+// Click on spoiler-button
+logBody.on("click", function(evt) {
+  const btn = evt.target;
+  if (!btn || !btn.classList || !btn.classList.contains("spoiler-btn")) return;
+
+  const msgEl = btn.$p(".log-msg"); // родительский .log-msg (Sciter: closest)
+  if (!msgEl) return;
+
+  const wrap = msgEl.$(".cont-wrap");
+  const pre  = wrap && wrap.$("pre.cont");
+  const full = wrap && wrap.$(".cont-full");
+  if (!wrap || !pre || !full) return;
+
+  if (wrap.classList.contains("collapsed")) {
+    pre.innerText = full.innerText;
+    wrap.classList.remove("collapsed");
+    wrap.classList.add("expanded");
+    btn.textContent = "▴";
+  } else {
+    const text = full.innerText;
+    const lines = text.split(/\r\n|\n|\r/);
+    pre.innerText = lines.slice(0, PREVIEW_LINES).join("\n");
+    wrap.classList.remove("expanded");
+    wrap.classList.add("collapsed");
+    btn.textContent = "▾";
+  }
+  evt.stopPropagation();
+});
+
+  logBody.on("contextmenu", function(evt) {
+    let el = evt.target;
+    while (el && el !== logBody) {
+      if (el.classList && el.classList.contains("log-msg")) {
+        lastClickedIP = el.getAttribute("data-ip") || "";
+        break;
+      }
+      el = el.parentElement;
+    }
+  });
+
+  globalThis.getLastLogIP = function() { return lastClickedIP; };
+  globalThis.clearLog     = function() { logBody.innerHTML = ""; lastClickedIP = ""; };
 </script>
 </head>
 <body id="log"></body>

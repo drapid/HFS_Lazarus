@@ -27,7 +27,7 @@ program hfs;
   {$MODE Delphi}
 {$ENDIF}
 
-{$R 'data.res' 'res\data.rc'}
+{$R 'Units\data.res' 'res\data.rc'}
 
 uses
   {$IFDEF EX_DEBUG}
@@ -55,17 +55,8 @@ uses
   diffDlg in 'lib\diffDlg.pas' {diffFrm},
   purgeDlg in 'lib\purgeDlg.pas' {purgeFrm},
   ipsEverDlg in 'ipsEverDlg.pas' {ipsEverFrm},
-  parserLib in 'srv\parserLib.pas',
-  listSelectDlg in 'listSelectDlg.pas' {listSelectFrm},
-  filepropDlg in 'filepropDlg.pas' {filepropFrm},
-  runscriptDlg in 'runscriptDlg.pas' {runScriptFrm},
-  scriptLib in 'scriptLib.pas',
-  hfsJclOthers in 'jcl\hfsJclOthers.pas',
+  scriptLib in 'srv\scriptLib.pas',
   fileLib in 'srv\fileLib.pas',
-  hfsGlobal in 'hfsGlobal.pas',
-  hfsVars in 'hfsVars.pas',
-  langLib in 'langLib.pas',
-  progFrmLib in 'lib\progFrmLib.pas',
   srvUtils in 'srv\srvUtils.pas',
   serverLib in 'srv\serverLib.pas',
   IconsLib in 'srv\IconsLib.pas' {IconsDM: TDataModule},
@@ -73,6 +64,14 @@ uses
   srvConst in 'srv\srvConst.pas',
   srvVars in 'srv\srvVars.pas',
   netUtils in 'srv\netUtils.pas',
+  listSelectDlg in 'listSelectDlg.pas' {listSelectFrm},
+  filepropDlg in 'filepropDlg.pas' {filepropFrm},
+  runscriptDlg in 'runscriptDlg.pas' {runScriptFrm},
+  hfsJclOthers in 'jcl\hfsJclOthers.pas',
+  hfsGlobal in 'hfsGlobal.pas',
+  hfsVars in 'hfsVars.pas',
+  langLib in 'langLib.pas',
+  progFrmLib in 'lib\progFrmLib.pas',
   hfs.tray in 'hfs.tray.pas';
 
 {$R *.res}
@@ -91,12 +90,13 @@ uses
   function isSingleInstance(): boolean;
   var
     params: TStringDynArray;
-    ini, tpl: string;
+    ini, tpl: String;
   begin
     result := FALSE;
     // the -i parameter affects loadCfg()
     params := paramsAsArray();
     processParams_before(params, 'i');
+    ini := ''; tpl := '';
     loadCfg(ini, tpl);
     chop('only-1-instance=', ini);
     if ini = '' then

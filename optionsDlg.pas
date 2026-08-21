@@ -23,8 +23,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms, Math,
-  Dialogs, ExtCtrls, StdCtrls, Grids, ComCtrls, ValEdit, types, CheckLst,
-  hfsGlobal, IconsLib;
+  Dialogs, ExtCtrls, StdCtrls, Grids, ComCtrls, ValEdit, types,
+  IconsLib;
 
 type
   ToptionsFrm = class(TForm)
@@ -164,9 +164,10 @@ implementation
 {$R *.dfm}
 
 uses
-  utilLib, HSlib, strUtils, listSelectDlg, fileLib, main,
-  netUtils, parserLib,
-  srvClassesLib, srvConst, srvUtils, srvVars;
+  strUtils, listSelectDlg, fileLib,
+  netUtils, scriptLib,
+  HSlib, srvClassesLib, srvConst, serverLib, srvUtils, srvVars,
+  main, utilLib;
 
 resourcestring MSG_INVERT_BAN =
   'Normal behavior of the Ban is to prevent access to the addresses you specify (also called black-list).'
@@ -449,7 +450,7 @@ begin
   loadValues();
   if pageCtrl.activePage <> a2nPage then
     exit;
-  //s := mainfrm.ipPointedInLog();
+  s := mainfrm.ipPointedInLog();
   if s = '' then
     exit;
   // select row or insert new one
@@ -557,7 +558,7 @@ end; // updateAccessBox
 
 procedure ToptionsFrm.checkRedir();
 begin // mod by mars
-redirBox.color:=blend(clWindow, clRed,
+  redirBox.color := blend(clWindow, clRed,
   ifThen((redirBox.text >'') and not mainFrm.fileSrv.fileExistsByURL(redirBox.text), 0.5, 0) );
 end; // checkRedir
 
