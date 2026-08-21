@@ -1113,7 +1113,11 @@ begin
           if Assigned(ff) then
             begin
               rs := ff.getVFSJZ2(ii);
-              subFilesJ.Add(Putf8Char(rs), Length(rs), TTextWriterKind.twNone); // recursion
+              if rs > '' then
+                begin
+                  subFilesJ.AddNoJsonEscapeForcedNoUnicode(@rs[1], Length(rs)); // recursion
+                  subFilesJ.AddComma;
+                end;
             end;
         end;
      {$ELSE FPC}
