@@ -10,8 +10,8 @@ uses
   Types, SysUtils;
 
 const
-  SRV_VERSION = '2.5.0 Alpha by RD';
-  VERSION = '2.5.0 Alpha4 by RD' {$IFDEF CPUX64 } +' x64' {$ENDIF} {$IFDEF FPC } +' FPC' {$ENDIF};
+  SRV_VERSION = '2.5.0 by RD';
+  VERSION = '2.5.0 Alpha5 by RD' {$IFDEF CPUX64 } +' x64' {$ENDIF} {$IFDEF FPC } +' FPC' {$ENDIF};
   VERSION_BUILD = '325';
   VERSION_STABLE = {$IFDEF STABLE } TRUE {$ELSE} FALSE {$ENDIF};
   HFS_HTTP_AGENT = 'HFS/'+SRV_VERSION;
@@ -119,10 +119,101 @@ type
                       logBytesReceived, logBytesSent, logOnlyServed,
                       logRequests, logReplies, logOtherEvents,
                       dumpRequests, dumpTraffic,
-                      logMacros);
+                      logMacros,
+                      logDate, logTime, logOnVideo,
+                      tabOnLogFile, useISOdate, logAPI);
 
   TLogPrefs = set of TLogPrefsVal;
 
+  TSrvPrefsVal = (thumbedTypes);
+
+type
+  TPrefBoolDefine = record
+    pCaption: String;
+    pCode: String;
+    pDefault: Boolean;
+  end;
+
+  TPrefStrDefine = record
+    pCaption: String;
+    pCode: String;
+    pDefault: String;
+  end;
+
+const
+  cLoadPrefs: array[TLoadPrefsVal] of TPrefBoolDefine = (
+    (pCaption: 'Support DESCRIPT.ION'; pCode: 'support-descript.ion'; pDefault: True),                            // lpION
+    (pCaption: 'List protected items only for allowed users'; pCode: 'list-protected-items'; pDefault: False),    // lpHideProt
+    (pCaption: 'List files with <system> attribute'; pCode: 'list-system-files'; pDefault: False),                // lpSysAttr
+    (pCaption: 'List files with <hidden> attribute'; pCode: 'list-hidden-files'; pDefault: False),                // lpHdnAttr
+    (pCaption: 'Load single comment files'; pCode: 'load-single-comment-files'; pDefault: True),                  // lpSnglCmnt
+    (pCaption: 'Enabled fingerprints'; pCode: 'enable-fingerprints'; pDefault: True),                             // lpFingerPrints
+//    'recursive-listing',         // lpRecurListing
+    (pCaption: 'Use OEM for DESCRIPT.ION'; pCode: 'oem-descript.ion'; pDefault: False),                           // lpOEMForION
+    (pCaption: 'Delete partial uploads'; pCode: 'delete-partial-uploads'; pDefault: False),                       // lpDeletePartialUploads
+    (pCaption: 'Number files on upload instead of overwriting'; pCode: 'number-files-on-upload'; pDefault: True), // lpNumberFilesOnUpload
+    (pCaption: 'Use comment as realm'; pCode: 'use-comment-as-realm'; pDefault: True)                             // lpUseCommentAsRealm
+  );
+
+  cShowPrefs: array[TShowPrefsVal] of TPrefBoolDefine = (
+     (pCaption: 'Use system icons'; pCode: 'use-system-icons'; pDefault: True),                                       // spUseSysIcons
+     (pCaption: 'URLs starting with https instead of http'; pCode: 'https-url'; pDefault: False),                     // spHttpsUrls
+     (pCaption: 'Folders before'; pCode: 'folders-before'; pDefault: True),                                           // spFoldersBefore
+     (pCaption: 'Links before'; pCode: 'links-before'; pDefault: True),                                               // spLinksBefore
+     (pCaption: 'Don''t include port in URL'; pCode: 'dont-include-port-in-url'; pDefault: False),                    // spNoPortInUrl
+     (pCaption: 'Encode non-ASCII characters'; pCode: 'encode-non-ascii'; pDefault: False),                           // spEncodeNonascii
+     (pCaption: 'Encode spaces'; pCode: 'encode-spaces'; pDefault: True),                                             // spEncodeSpaces
+     (pCaption: 'Compressed browsing'; pCode: 'compressed-browsing'; pDefault: True),                                 // spCompressed
+     (pCaption: ''; pCode: ''; pDefault: True),                                                                       // spNoWaitSysIcons
+     (pCaption: 'Send HFS identifier'; pCode: 'send-hfs-identifier'; pDefault: True),                                 // spSendHFSIdentifier
+     (pCaption: 'Accept any login for unprotected resources'; pCode: 'free-login'; pDefault: False),                  // spFreeLogin
+     (pCaption: 'Stop spiders'; pCode: 'stop-spiders'; pDefault: True),                                               // spStopSpiders
+     (pCaption: 'Prevent leeching (download accelerators)'; pCode: 'prevent-leeching'; pDefault: True),               // spPreventLeeching
+     (pCaption: 'Enable macros'; pCode: 'enable-macros'; pDefault: True),                                             // spEnableMacros
+     (pCaption: 'Disable macros for non-local IP'; pCode: 'macros-not4nonlocal'; pDefault: True),                     // spNonLocalIPDisableMacros
+     (pCaption: 'Include password in pages (for download managers)'; pCode: 'include-pwd-in-pages'; pDefault: False), // spPwdInPages
+     (pCaption: 'Enable ~nodefault'; pCode: 'enable-no-default'; pDefault: False),                                    // spEnableNoDefault
+     (pCaption: 'Specific HTML for download managers'; pCode: 'getright-template'; pDefault: True),                   // spDMbrowserTpl
+     (pCaption: 'Enable recursive listing'; pCode: 'recursive-listing'; pDefault: True),                              // spRecursiveListing
+     (pCaption: 'OEM file names for TAR archives'; pCode: 'oem-tar'; pDefault: False),                                // spOemTar
+     (pCaption: 'No Content-disposition'; pCode: ''; pDefault: False),                                                // spNoContentDisposition
+     (pCaption: 'Prevent system standby on network activity'; pCode: 'prevent-standby'; pDefault: False),             // spPreventStandby
+     (pCaption: 'Compress ZIP streams'; pCode: 'compressed-zip-stream'; pDefault: True)                               // spCompressedZip
+  );
+
+  cLogPrefs: array[TLogPrefsVal] of TPrefBoolDefine = (
+     (pCaption: 'Only served requests'; pCode: 'log-banned'; pDefault: True),       // logBanned
+     (pCaption: 'Icons'; pCode: 'log-icons'; pDefault: False),                      // logIcons
+     (pCaption: 'Browsing'; pCode: 'log-browsing'; pDefault: True),                 // logBrowsing);
+     (pCaption: 'Progress'; pCode: 'log-progress'; pDefault: False),                // logProgress);
+     (pCaption: 'Server start'; pCode: 'log-server-start'; pDefault: False),        // logServerstart
+     (pCaption: 'Server stop'; pCode: 'log-server-stop'; pDefault: False),          // logServerstop
+     (pCaption: 'Connections'; pCode: 'log-connections'; pDefault: False),          // logconnections
+     (pCaption: 'Disconnections'; pCode: 'log-disconnections'; pDefault: False),    // logDisconnections
+     (pCaption: 'Uploads'; pCode: 'log-uploads'; pDefault: True),                   // logUploads
+     (pCaption: 'Full downloads'; pCode: 'log-full-downloads'; pDefault: True),     // logFullDownloads
+     (pCaption: 'Deletions'; pCode: 'log-deletions'; pDefault: True),               // LogDeletions);
+     (pCaption: 'Other events'; pCode: 'log-others'; pDefault: True),               // logOtherEvents);
+     (pCaption: 'Bytes received'; pCode: 'log-bytes-received'; pDefault: False),    // logBytesReceived);
+     (pCaption: 'Bytes sent'; pCode: 'log-bytes-sent'; pDefault: False),            // logBytesSent);
+     (pCaption: 'Only served requests'; pCode: 'log-only-served'; pDefault: True),  // logOnlyServed);
+     (pCaption: 'Requests'; pCode: 'log-requests'; pDefault: False),                // logRequests);
+     (pCaption: 'Replies'; pCode: 'log-replies'; pDefault: False),                  // logReplies);
+     (pCaption: 'Requests dump'; pCode: 'log-dump-request'; pDefault: False),       // dumpRequests);
+     (pCaption: 'Dump traffic'; pCode: 'log-dump-traffic'; pDefault: False),        // dumpTraffic);
+     (pCaption: 'Enable macros.log'; pCode: 'log-macros'; pDefault: False),         // logMacros);
+     (pCaption: 'Date'; pCode: 'log-date'; pDefault: False),                        // LogDate);
+     (pCaption: 'Time'; pCode: 'log-time'; pDefault: True),                         // LogTime);
+     (pCaption: 'Log to screen'; pCode: 'log-to-screen'; pDefault: True),            // logOnVideo
+     (pCaption: 'Tabbed instead of multi-line for the log file'; pCode: 'log-file-tabbed'; pDefault: False), // tabOnLogFile
+     (pCaption: 'Use ISO date format'; pCode: 'use-iso-date-format'; pDefault: False), //useISOdate
+     (pCaption: 'API requests'; pCode: 'log-api'; pDefault: False) //logAPI
+  );
+
+const
+  cSrvPrefs: array[TSrvPrefsVal] of TPrefStrDefine = (
+    (pCaption: 'Select extensions to get thumbnails for'; pCode: 'thumbs-get-for'; pDefault: '.jpg; .jpeg; .png; .gif; .webp; .bmp; .ico')
+    );
 
 const
   ILLEGAL_FILE_CHARS = [#0..#31,'/','\',':','?','*','"','<','>','|'];
@@ -150,7 +241,7 @@ const
     '*.heif', 'image/heif',
     '*.zip', 'application/zip'
   );
-  thumbsShowToExtDefaultStr = '.jpg; .jpeg; .png; .gif; .webp; .bmp; .ico';
+//  thumbsShowToExtDefaultStr = '.jpg; .jpeg; .png; .gif; .webp; .bmp; .ico';
   ZIP_MIME = TContentTypeType('application/zip');
 
 const // Messages

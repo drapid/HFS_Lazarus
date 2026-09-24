@@ -166,6 +166,7 @@ implementation
 uses
   strUtils, listSelectDlg, fileLib,
   netUtils, scriptLib,
+  filesTreeLib,
   HSlib, srvClassesLib, srvConst, serverLib, srvUtils, srvVars,
   main, utilLib;
 

@@ -30,8 +30,9 @@ type
   function findRedirection(var h, p: String; const agent: String): Boolean;
   function checkHTTPSCanWork(var missing: TStringDynArray): Boolean; OverLoad;
   function checkHTTPSCanWork(): Boolean; OverLoad;
-  function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
+  //function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
 //  function getExternalAddress(var res: String; provider: PString=NIL; fs: TFileServer = NIL; doLog: Boolean = false): Boolean;
+  function getExternalAddress(var res: String; provider: PString=NIL): Boolean;
 // an ip address where we are listening
   function getIP(): String;
 
@@ -90,7 +91,7 @@ uses
  {$ENDIF USE_SSL}
  {$ENDIF ~FPC}
   srvConst, srvUtils, srvVars,
-  HSUtils;
+  logLib, HSUtils;
 
 resourcestring
   unsignesErr = 'Signature is not valid';
@@ -579,8 +580,9 @@ begin
 end; // onHttpGetUpdate
 
 //function getExternalAddress(var res: String; provider: PString=NIL; doLog: Boolean = false): Boolean;
-function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
+//function getExternalAddress(var res: String; provider: PString=NIL; doLogFunc: TAdd2LogEvent = NIL): Boolean;
 //function getExternalAddress(var res: String; provider: PString=NIL; fs: TFileServer = NIL; doLog: Boolean = false): Boolean;
+function getExternalAddress(var res: String; provider: PString=NIL): Boolean;
 
   procedure loadIPservices(src: String='');
   var
@@ -655,10 +657,12 @@ begin
   result := checkAddressSyntax(s, false) and not isLocalIP(s);
   if not result then
     exit;
-  if (res <> s) and Assigned(doLogFunc) then //mainFrm.logOtherEventsChk.checked then
+  if (res <> s) then //mainFrm.logOtherEventsChk.checked then
+  //if (res <> s) and Assigned(doLogFunc) then //mainFrm.logOtherEventsChk.checked then
   //if doLog and (fs <> NIL) and (res <> s) then // and Assigned(doLogFunc) then //mainFrm.logOtherEventsChk.checked then
-    doLogFunc('New external address: '+s+' via '+hostFromURL(addr));
+    //doLogFunc('New external address: '+s+' via '+hostFromURL(addr));
     //fs.add2Log('New external address: '+s+' via '+hostFromURL(addr));
+    add2Log('New external address: '+s+' via '+hostFromURL(addr));
   res := s;
 end; // getExternalAddress
 

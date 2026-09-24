@@ -38,6 +38,7 @@ uses
   //hfsGlobal,
   utilLib, hfsVars,
   Srv.Macroses,
+  logLib,
   srvConst, srvVars;
 
 var
@@ -150,7 +151,8 @@ function setItemMacro(fs: TFileServer; const fullMacro: UnicodeString; pars: TPa
   begin
     result := '';
     f := fs.findFileByURL(pars[0], cbData.folder);
-    if f = NIL then exit; // doesn't exist
+    if f = NIL then
+      exit; // doesn't exist
 
     if pars.parExistVal('comment', v) then
      try
@@ -177,7 +179,10 @@ function setItemMacro(fs: TFileServer; const fullMacro: UnicodeString; pars: TPa
     setAttr(FA_BROWSABLE, 'browsable');
     setAttr(FA_DL_FORBIDDEN, 'download forbidden');
     if f.isFolder() then
-      try f.dontCountAsDownloadMask := pars.parEx('not as download') except end
+      try
+        f.dontCountAsDownloadMask := pars.parEx('not as download')
+       except
+      end
     else
       setAttr(FA_DONT_COUNT_AS_DL, 'not as download');
 
@@ -315,7 +320,8 @@ begin
               mainFrm.filesBox.selected := fs.findFilebyURL(s, NIL, FALSE).node;
    {$ENDIF ~USE_VTV}
               spaceIf(TRUE);
-            except end;
+             except
+            end;
 end;
 
 function getINIMacro(fs: TFileServer; const fullMacro: UnicodeString; pars: TPars2; cbData: PMacroData): UnicodeString;
@@ -398,7 +404,7 @@ const
 
   procedure deprecatedMacro(const what: String=''; const instead: String='');
   begin
-    fs.add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed);
+    add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed);
 //    add2log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed)
   end;
 
@@ -553,7 +559,7 @@ end;
 procedure runTimedEvents(fs: TFileServer);
 var
   i: integer;
-  sections: TStringDynArray;
+  sections: TSections;
   re: TRegExpr;
   t, last: Tdatetime;
   section: string;

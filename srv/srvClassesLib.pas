@@ -29,13 +29,13 @@ uses
   Graphics,
   Contnrs,
   iniFiles, types, strUtils, sysUtils, classes,
-  ComCtrls,
   {$IFNDEF USE_MORMOT_COLLECTIONS}
   Generics.Collections,
   {$ELSE USE_MORMOT_COLLECTIONS}
   mormot.core.collections,
   mormot.core.json,
   {$ENDIF USE_MORMOT_COLLECTIONS}
+  filesTreeLib,
   hslib, srvConst;
 
 type
@@ -404,10 +404,6 @@ type
     function  getFileName(): String;
   end;
 
-  TFileTree = TTreeView;
-  TFileNode = TTreeNode;
-  TFileNodeDynArray = array of TFileNode;
-
   IFile = interface;
 
   TFileEvent = procedure(f: TObject);
@@ -562,7 +558,8 @@ type
   TMacroTableVal = IKeyValue<String, UnicodeString>;
   {$ENDIF USE_MORMOT_COLLECTIONS}
 
-  TAdd2LogEvent = procedure(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = True);
+
+
 
 
   function conn2dataMain(p: Tobject): TconnDataMain; inline; overload;
@@ -2218,11 +2215,11 @@ end; // countConnectionsByIP
 
 function getGraphPic(cd: TconnDataMain; samplesLenght: Integer; w, h: Integer; var format: TContentTypeType): RawByteString;
 var
-  bmp: Tbitmap;
-  refresh: string;
+  refresh, options, s1: string;
   i: integer;
+  wantRaster: boolean;
+  bmp: Tbitmap;
   colors: TIntegerDynArray;
-  options: string;
 
   procedure addColor(c: Tcolor);
   var
@@ -2234,54 +2231,79 @@ var
   end; // addColor
 
 begin
+  // Query: ?w=&h=&refresh=&format=png|webp|svg  (default: SVG)
   options := copy(decodeURL(cd.conn.httpRequest.url), 12, MAXINT);
-  delete(options, pos('?',options), MAXINT);
-  bmp := Tbitmap.create;
-  bmp.SetSize(w, h);
+  delete(options, pos('?', options), MAXINT);
+  refresh := '';
   colors := NIL;
   if options = '' then
     begin
       // here is an initial support for ?parameters. colors not supported yet.
       try
-        bmp.width := strToInt(cd.urlvars.Values['w'])
+        s1 := cd.urlvars.Values['w'];
+        if s1 <> '' then
+          w := strToInt(s1);
        except
       end;
       try
-        bmp.height := min(strToInt(cd.urlvars.Values['h']), 300000 div max(1,bmp.width))
+        s1 := cd.urlvars.Values['h'];
+        if s1 <> '' then
+          bmp.height := min(strToInt(s1), 300000 div max(1, w))
        except
       end;
       refresh := cd.urlvars.Values['refresh'];
     end
    else
     try
-      i := strToInt(chop('x',options));
+      // legacy path: /~img_graph512x32x5  (w x h x refresh)
+      i := strToInt(chop('x', options));
       if (i > 0) and (i <= samplesLenght) then
-        bmp.Width:=i;
-      i := strToInt(chop('x',options));
+        w := i;
+      i := strToInt(chop('x', options));
       if (i > 0) and (i <= samplesLenght) then
-        bmp.height := min(i, 300000 div max(1,bmp.width));
-      refresh := chop('x',options);
+        h := min(i, 300000 div max(1, w));
+      refresh := chop('x', options);
       for i:=1 to 5 do
-        addColor(stringToColorEx(chop('x',options), graphics.clDefault));
+        addColor(stringToColorEx(chop('x', options){$IFNDEF FMX}, graphics.clDefault{$ENDIF ~FMX}));
      except
     end;
-  drawGraphOn(bmp.canvas, colors);
-  if bmp2strWebPAllowed and (ipos('image/webp', cd.conn.getHeader('Accept')) > 0) then
+
+//  wantRaster := sameText(cd.urlvars.Values['format'], 'png')
+//    or sameText(cd.urlvars.Values['format'], 'webp');
+  wantRaster :=not  sameText(cd.urlvars.Values['format'], 'svg');
+
+  if wantRaster then
     begin
-      Result := bmp2strWebP(bmp);
-      format := webpMime;
+      bmp := Tbitmap.create;
+      try
+        bmp.SetSize(w, h);
+        drawGraphOn(bmp.canvas, colors);
+        if bmp2strWebPAllowed and (ipos('image/webp', cd.conn.getHeader('Accept')) > 0) then
+          begin
+            Result := bmp2strWebP(bmp);
+            format := webpMime;
+          end
+        else
+          begin
+            Result := bmp2str(bmp);
+            format := pngMime;
+          end;
+      finally
+        bmp.free;
+      end;
     end
-   else
+  else
     begin
-      Result := bmp2str(bmp);
-      format := pngMime;
+      Result := graphToSvg(w, h);
+      format := TContentTypeType('image/svg+xml; charset=utf-8');
     end;
-  bmp.free;
+
   if cd = NIL then
     exit;
   cd.conn.addHeader(RawByteString('Cache-Control'), 'no-cache');
   if refresh > '' then
-    cd.conn.addHeader('Refresh', refresh);
+//    cd.conn.addHeader('Refresh', refresh);
+    cd.conn.addHeader('Refresh', stripChars(refresh, [#13,#10])); // no CRLF: header injection
 end; // getGraphPic
 
 function newMacroTableVal: TMacroTableVal;

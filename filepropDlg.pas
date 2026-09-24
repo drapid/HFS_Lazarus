@@ -7,7 +7,9 @@ uses
   SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, StdCtrls, ExtCtrls, types,
   ComboEx, math,
-  hslib, serverLib, srvClassesLib, fileLib;
+  //hslib,
+  filesTreeLib,
+  serverLib, srvClassesLib, fileLib;
 
 type
 

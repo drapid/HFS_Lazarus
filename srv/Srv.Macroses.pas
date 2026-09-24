@@ -46,8 +46,10 @@ uses
   RDFileUtil, RDUtils, RnQCrypt,
   srvUtils, srvVars,
   fileLib,
+  filesTreeLib,
   netUtils,
   scriptLib,
+  logLib,
   HSLib,
   HSUtils;
 
@@ -149,9 +151,9 @@ var
   procedure deprecatedMacro(const what: String=''; const instead: String='');
   begin
    {$IFDEF FMX}
-    fs.add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, TAlphaColorRec.Red);
+    add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, TAlphaColorRec.Red);
    {$ELSE ~FMX}
-    fs.add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed);
+    add2Log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed);
    {$ENDIF FMX}
 //    add2log('WARNING, deprecated macro: '+first(what, name)+nonEmptyConcat(' - Use instead: ',instead), NIL, clRed)
   end;
@@ -1421,11 +1423,14 @@ var
     portmask := par(1,'port');
     if ipmask = '' then
       exit;
+{
     for i:=0 to fs.htSrv.conns.count-1 do
       with fs.conn2data(i) do
         if addressmatch(ipmask, address)
         and ((portmask = '') or filematch(portmask, conn.port)) then
           conn.disconnect();
+}
+    fs.kickByMask(ipmask, portmask);
     result:='';
   end; // disconnect
 
@@ -1743,19 +1748,29 @@ var
       else if name = '%ip%' then
         result:=md.cd.address
       else if name = '%ip-to-name%' then
-        result:=localDNSget(md.cd.address)
+        result := localDNSget(md.cd.address)
       else if name = '%lang%' then
-        result:=stripChars(copy(md.cd.conn.getHeader('Accept-Language'),1,2), ['a'..'z','A'..'Z'], TRUE)
+        result := stripChars(copy(md.cd.conn.getHeader('Accept-Language'),1,2), ['a'..'z','A'..'Z'], TRUE)
       else if name = '%url%' then
-        result:=macroQuote(md.cd.conn.httpRequest.url)
+        result := macroQuote(md.cd.conn.httpRequest.url)
       else if name = '%user%' then
-        result:= macroQuote(usr)
+        result := macroQuote(usr)
       else if name = '%password%' then
         result := macroQuote(md.cd.conn.httpRequest.pwd)
       else if name = '%loggedin%' then
-        result := if_(usr>'', fs.tpl['loggedin'])
+        begin
+          if usr > '' then
+            Result := fs.tpl['loggedin']
+           else
+            Result := '';
+        end
       else if name = '%login-link%' then
-        result := if_(usr='', fs.tpl['login-link'])
+        begin
+          if usr='' then
+            Result := fs.tpl['login-link']
+           else
+            Result := '';
+        end
       else if name = '%user-notes%' then
         if md.cd.account = NIL then result:=''
         else result:=md.cd.account.notes
@@ -2051,17 +2066,24 @@ begin
         end
        else
       if name = 'current downloads' then
-        result := intToStr(fs.countDownloads( par('ip'), par('user'), if_(sameText(par('file'), 'this'), md.f) as Tfile) )
+        begin
+          if sameText(par('file'), 'this') then
+            Result := intToStr(fs.countDownloads( par('ip'), par('user'), md.f) )
+           else
+            Result := intToStr(fs.countDownloads( par('ip'), par('user')) )
+        end
        else
       if name = 'disconnection reason' then
         begin
-          try
+          if pars.parExist('if') then
+           try
             if isFalse(pars.parEx('if')) then
               begin
-              result:='';
-              exit;
+                result := '';
+                exit;
               end;
-          except end;
+            except
+           end;
           result:=md.cd.disconnectReason; // return the previous state
           if pars.count > 0 then md.cd.disconnectReason:=p;
         end
@@ -2116,10 +2138,13 @@ begin
        else
       if name = 'add to log' then
         begin
-        try s := getVar(pars.parEx('var'))
-        except s:=p end;
-        fs.add2log(s, md.cd, stringToColorEx(par(1,'color'){$IFNDEF FMX}, clDefault {$ENDIF}));
-        result:='';
+          try
+            s := getVar(pars.parEx('var'))
+           except
+            s:=p
+          end;
+          add2log(s, md.cd, stringToColorEx(par(1,'color'){$IFNDEF FMX}, clDefault {$ENDIF}));
+          result:='';
         end
        else
       if name = 'mkdir' then
@@ -2139,7 +2164,7 @@ begin
         encodeuri()
        else
       if name = 'decodeuri' then
-        result:=noMacrosAllowed(decodeURL(String(p)))
+        result := noMacrosAllowed(decodeURL(String(p)))
        else
       if name = 'any macro marker' then
         trueIf(anyMacroMarkerIn(first(loadfile(fs.uri2diskMaybe(p)), p)))
@@ -2301,8 +2326,9 @@ begin
             begin
               if externalIP = '' then
                 if fs.prefs.getDPrefBool('log-others') then
-                  netUtils.getExternalAddress(externalIP, NIL, fs.add2LogFunc)
+                  //netUtils.getExternalAddress(externalIP, NIL, fs.add2LogFunc)
                   //netUtils.getExternalAddress(externalIP, NIL, fs, True)
+                  netUtils.getExternalAddress(externalIP, NIL)
                  else
                   getExternalAddress(externalIP, NIL);
               result := externalIP;
@@ -2625,7 +2651,7 @@ begin
       if name = 'for' then
         for_();
     finally
-      if (logMacros in fs.LogP) then
+      if (logMacros in LogPrefs) then
         begin
         if not fileExists(MACROS_LOG_FILE) then
           saveFile2(MACROS_LOG_FILE, HEADER);
@@ -2634,8 +2660,9 @@ begin
         end;
       end;
    except
-    if (logMacros in fs.LogP) then
-      macrosLog(fullMacro, 'Exception, please report this bug on www.rejetto.com/forum/');
+    if (logMacros in LogPrefs) then
+      //macrosLog(fullMacro, 'Exception, please report this bug on www.rejetto.com/forum/');
+      macrosLog(fullMacro, 'Exception, please report this bug on https://rnq.ru/forum/http-file-server');
     result:='';
   end;
 end; // cbMacros

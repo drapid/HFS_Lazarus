@@ -19,6 +19,7 @@ uses
   Classes,
   math, Types, SysUtils,
   srvConst,
+  filesTreeLib,
   srvClassesLib;
 
 type
@@ -91,6 +92,7 @@ type
     function  getAccountsFor(action: TfileAction; specialUsernames: Boolean=FALSE; outInherited: Pboolean=NIL): TstringDynArray;
     function  accessFor(const username, password: String): Boolean; overload;
     function  accessFor(cd: TconnDataMain): Boolean; overload;
+    function  accountAllowed(action: TfileAction; cd: TconnDataMain): Boolean;
     function  hasRecursive(attributes: TfileAttributes; orInsteadOfAnd: Boolean=FALSE; outInherited: Pboolean=NIL): Boolean; overload;
     function  hasRecursive(attribute: TfileAttribute; outInherited: Pboolean=NIL): Boolean; overload;
     function  getFolder(): String;
@@ -216,13 +218,14 @@ uses
  {$ENDIF USE_MORMOT}
   serverLib,
   HSUtils,
-  srvUtils, srvVars,
+  srvUtils,
  {$IFDEF FMX}
   IconsFMXLib,
  {$ELSE ~FMX}
   IconsLib,
  {$ENDIF FMX}
-  scriptLib
+  scriptLib,
+  srvVars
   ;
 
 function existsDescriptionFile(const lp: TLoadPrefs; const fn: string): Boolean;
@@ -543,9 +546,10 @@ begin
   s2 := '';
  {$IFDEF FPC}
   n := Self.node;
-  for i:=0 to n.Count-1 do
+  if Assigned(n) and (n.hasChildren) then
+   for i:=0 to n.Count-1 do
     begin
-      ff := TFile(nodetofile(n.items[i]));
+      ff := TFile(nodetofile(n.Items[i]));
       if Assigned(ff) then
         s2 := s2 + ff.getVFS(); // recursion
     end;
@@ -830,11 +834,7 @@ begin
 
   subFiles := NIL;
   n := node;
-  {$IFDEF USE_VTV}
-  if n.ChildCount > 0 then
-  {$ELSE ~USE_VTV}
-  if n.Count > 0 then
-  {$ENDIF ~USE_VTV}
+  if n.hasChildren then
     begin
       subFiles := TJSONArray.Create;
       ii := p_icons;
@@ -1096,11 +1096,7 @@ begin
 
   subFiles := '';
   n := node;
-  {$IFDEF USE_VTV}
-  if n.ChildCount > 0 then
-  {$ELSE ~USE_VTV}
-  if n.Count > 0 then
-  {$ENDIF ~USE_VTV}
+  if n.hasChildren then
     begin
       subFilesJ := TJsonWriter.CreateOwnedStream();
 //      subFilesJ.Add('{', TTextWriterKind.twNone);
@@ -1109,7 +1105,7 @@ begin
      {$IFDEF FPC}
       for i:=0 to n.Count-1 do
         begin
-          ff := TFile(nodetofile(n.items[i]));
+          ff := TFile(nodetofile(n.Items[i]));
           if Assigned(ff) then
             begin
               rs := ff.getVFSJZ2(ii);
@@ -1296,19 +1292,19 @@ begin
     end;
 end;
 
-function Tfile.isFileOrFolder():boolean;
+function Tfile.isFileOrFolder(): Boolean;
 begin
-  result:=not (FA_LINK in flags)
+  result := not (FA_LINK in flags)
 end;
 
-function Tfile.isRealFolder():boolean;
+function Tfile.isRealFolder(): Boolean;
 begin
-  result:=(FA_FOLDER in flags) and not (FA_VIRTUAL in flags)
+  result := (FA_FOLDER in flags) and not (FA_VIRTUAL in flags)
 end;
 
-function Tfile.isVirtualFolder():boolean;
+function Tfile.isVirtualFolder(): Boolean;
 begin
-  result:=(FA_FOLDER in flags) and (FA_VIRTUAL in flags)
+  result := (FA_FOLDER in flags) and (FA_VIRTUAL in flags)
 end;
 
 function Tfile.isEmptyFolder(loadPrefs: TLoadPrefs; cd: TconnDataMain=NIL): Boolean;
@@ -1772,18 +1768,18 @@ var
   f: Tfile;
   s: string;
 begin
-result:='/';
-f:=parent;
-while assigned(f) and assigned(f.parent) do
-  begin
-  result:='/'+f.name+result;
-  f:=f.parent;
-  end;
-if not isTemp() then exit;
-f:=parent; // f now points to the non-temporary ancestor item
-s:=extractFilePath(resource);
-s:=copy( s, length(f.resource)+2, length(s) );
-result:=result+xtpl(s, ['\','/']);
+  result:='/';
+  f:=parent;
+  while assigned(f) and assigned(f.parent) do
+    begin
+    result:='/'+f.name+result;
+    f:=f.parent;
+    end;
+  if not isTemp() then exit;
+  f:=parent; // f now points to the non-temporary ancestor item
+  s:=extractFilePath(resource);
+  s:=copy( s, length(f.resource)+2, length(s) );
+  result:=result+xtpl(s, ['\','/']);
 end; // getFolder
 
 function Tfile.isDLforbidden(): Boolean;
@@ -1885,7 +1881,7 @@ while assigned(f) do
       s := UnUTF(loadFile(fn));
     end;
   if add2diff(s) and not first and assigned(outInherited) then
-    outInherited^:=TRUE;
+    outInherited^ := TRUE;
   f:=f.parent;
   first:=FALSE;
   end;
@@ -2095,6 +2091,46 @@ if (username > '') and (f = NIL) then
   end;
 end; // accessFor
 
+function Tfile.accountAllowed(action: TfileAction; cd: TconnDataMain): Boolean;
+var
+  a: TStringDynArray;
+  f: TFile;
+begin
+  result := FALSE;
+  if Self = NIL then
+    exit;
+  if action = FA_ACCESS then
+    begin
+      result := Self.accessFor(cd);
+      exit;
+    end;
+
+  if Self.isTemp() then
+    f := Self.parent
+   else
+    f := Self;
+
+  if (action = FA_UPLOAD) and not f.isRealFolder() then
+    exit;
+
+  repeat
+    a := f.accounts[action];
+    if assigned(a)
+    and not ((action = FA_UPLOAD) and not f.isRealFolder()) then
+      break;
+    f := f.parent;
+    if f = NIL then
+      exit;
+  until false;
+
+  result := TRUE;
+  if stringExists(USER_ANYONE, a, TRUE) then
+    exit;
+  result := (cd.usr = '') and stringExists(USER_ANONYMOUS, a, TRUE)
+    or assigned(cd.account) and stringExists(USER_ANY_ACCOUNT, a, TRUE)
+    or (NIL <> findEnabledLinkedAccount(cd.account, a, TRUE));
+end; // accountAllowed
+
 function Tfile.getRecursiveFileMask(): String;
 var
   f: Tfile;
@@ -2142,16 +2178,19 @@ procedure Tfile.getFiltersRecursively(var files, folders: String);
 var
   f: Tfile;
 begin
-files:='';
-folders:='';
-f:=self;
-while assigned(f) do
-  begin
-  if (files = '') and (f.filesfilter > '') then files:=f.filesFilter;
-  if (folders = '') and (f.foldersfilter > '') then folders:=f.foldersFilter;
-  if (files > '') and (folders > '') then break;
-  f:=f.parent;
-  end;
+  files := '';
+  folders := '';
+  f := self;
+  while assigned(f) do
+    begin
+      if (files = '') and (f.filesfilter > '') then
+        files:=f.filesFilter;
+      if (folders = '') and (f.foldersfilter > '') then
+        folders:=f.foldersFilter;
+      if (files > '') and (folders > '') then
+        break;
+      f := f.parent;
+    end;
 end; // getFiltersRecursively
 
 function Tfile.setBrowsable(childrenDone: Boolean; par, par2: IntPtr): TfileCallbackReturn;
@@ -2209,12 +2248,12 @@ function setNilChildrenFrom(nodes: TFileNodeDynArray; father: integer): integer;
 var
   i: integer;
 begin
-result:=0;
-for i:=father+1 to length(nodes)-1 do
-  if nodes[i].Parent = nodes[father] then
+  result:=0;
+  for i:=father+1 to length(nodes)-1 do
+   if nodes[i].Parent = nodes[father] then
     begin
-    nodes[i]:=NIL;
-    inc(result);
+      nodes[i]:=NIL;
+      inc(result);
     end;
 end; // setNilChildrenFrom
 

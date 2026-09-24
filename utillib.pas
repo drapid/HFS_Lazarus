@@ -51,7 +51,6 @@ var
   winVersion: TWinVersion;
 
 procedure doNothing(); inline; // useful for readability
-procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = false);
 function httpsCanWork(onlyCheck: Boolean = false): Boolean; OverLoad;
 function httpsCanWork(): Boolean; OverLoad;
 procedure fixFontFor(frm:Tform);
@@ -139,7 +138,7 @@ uses
   fastmm4,
   {$ENDIF HAS_FASTMM}
   RDUtils, RDFileUtil,
-  srvUtils, srvVars,
+  srvUtils, srvVars, logLib,
   hfsVars, scriptLib;
 
 function NtfsFileHasReparsePoint(const Path: string): Boolean;
@@ -515,7 +514,7 @@ end; // inputQueryLong
 function httpsCanWork(onlyCheck: Boolean = false): Boolean;
  {$IFDEF USE_SSL}
  resourcestring
-   MSG_NO_DLL = 'An HTTPS action is required but some files are missing. Download them?';
+   MSG_NO_DLL = 'An HTTPS action is required but some files are missing. Download SSL libraries?';
    MSG_DNL_OK = 'Download completed';
    MSG_DNL_FAIL = 'Download failed';
 
@@ -526,7 +525,9 @@ begin
  {$IFDEF USE_SSL}
   if checkHTTPSCanWork(missing) then
     exit(TRUE);
-  if onlyCheck or (msgDlg(MSG_NO_DLL, MB_OKCANCEL+MB_ICONQUESTION) <> MROK) then
+
+//  if onlyCheck or (msgDlg(MSG_NO_DLL, MB_OKCANCEL+MB_ICONQUESTION) <> MROK) then
+  if onlyCheck or (RnQDialogs.MessageDlg(MSG_NO_DLL, TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbOK, TMsgDlgBtn.mbCancel], 0, TMsgDlgBtn.mbCancel, 30) <> mrOk) then
     exit(FALSE);
   for var s in missing do
     if not httpGetFileWithCheck(LIBS_DOWNLOAD_URL + s, s, 2, mainfrm.statusBarHttpProgress) then
@@ -549,7 +550,8 @@ end;
 function getExternalAddress(var res: String; provider: PString=NIL; doLog: Boolean = false): Boolean;
 begin
   if doLog then
-    result := netUtils.getExternalAddress(res, provider, add2Log)
+    //result := netUtils.getExternalAddress(res, provider, add2Log)
+    result := netUtils.getExternalAddress(res, provider)
    else
     result := netUtils.getExternalAddress(res, provider);
 end; // getExternalAddress
@@ -563,7 +565,7 @@ begin
   if not Result then
     begin
       if errMsg > '' then
-        add2log(errMsg);
+        add2log('Downloading file "' + url + '" error: ' + errMsg);
       while not Result and (tryTimes > 1) do
        begin
         Result := netUtils.httpGetFileWithCheck(url, filename, errMsg, notify);
@@ -640,8 +642,8 @@ begin
   bi.pidlRoot:=NIL;
   bi.pszDisplayName:=@buff;
   bi.lpszTitle := PWideChar(caption);
-  bi.ulFlags:=BIF_RETURNONLYFSDIRS+BIF_NEWDIALOGSTYLE+BIF_SHAREABLE+BIF_UAHINT+BIF_EDITBOX+flags;
-  bi.lpfn:=@cbSelectFolder;
+  bi.ulFlags := {BIF_RETURNONLYFSDIRS or} BIF_NEWDIALOGSTYLE or BIF_SHAREABLE or BIF_UAHINT or BIF_EDITBOX or flags;
+  bi.lpfn := @cbSelectFolder;
   if from > '' then
     bi.lParam:= INT_PTR(@from[1]);
   bi.iImage:=0;
@@ -900,14 +902,6 @@ begin result:=b; b:=FALSE end;
 
 procedure doNothing();
 begin end;
-
-procedure add2Log(lines: String; cd: TconnDataMain=NIL; clr: Tcolor= Graphics.clDefault; doSync: Boolean = false);
-begin
-  if not doSync then
-    mainFrm.add2log(lines, cd, clr)
-   else
-    mainFrm.add2log(lines, cd, clr);
-end;
 
 function getUniqueName(const start:string; exists:TnameExistsFun): String;
 var

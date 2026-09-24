@@ -34,10 +34,18 @@ uses
   Classes,
   //AppEvnts, ImageList, Winapi.CommCtrl, System.Contnrs,
   // 3rd part libs. ensure you have all of these, the same version reported in dev-notes.txt
-  rnqTraylib, hfs.tray,
+  rnqTraylib,
+ {$IFDEF SHOW_GEO_BY_IP}
+  GeoIP,
+ {$ENDIF SHOW_GEO_BY_IP}
   // rejetto libs
+  hfs.tray,
   hfsGlobal,
-  srvConst, fileLib, serverLib, srvClassesLib,
+  srvConst, fileLib,
+  filesTreeLib,
+  logLib,
+  serverLib,
+  srvClassesLib,
   IconsLib;
 
 
@@ -48,8 +56,16 @@ type
     tray: TmyTrayicon;
     tray_ico: Ticon;
     tp: TIconParams;
+ {$IFDEF SHOW_GEO_BY_IP}
+//    country: TGeoIPCountry;
+    countryNum: Cardinal;
+ {$ENDIF SHOW_GEO_BY_IP}
     constructor Create; OverLoad;
     destructor Destroy; override;
+    procedure  setIcon(p: TIconParams);
+    procedure  setupDownloadIcon(data: TconnDataMain; hndl: HWND; downloadTrayEvent: TTrayEventHandle);
+    procedure  Clear;
+    procedure  Init(hndl: HWND; data: TconnDataMain; downloadTrayEvent: TTrayEventHandle);
   end;
 
   Tautosave = record
@@ -58,20 +74,8 @@ type
     menu: Tmenuitem;
    end;
 
-  PLogData = ^TLogData;
-  TLogData = record
-    lines: UnicodeString;
-    time: TDateTime;
-    addr: String;
-    address: String;
-    fileStr: String;
-    fileDynName: String;
-    clr: Tcolor;
-   {$IFDEF SHOW_GEO_BY_IP}
-    cc: String; // CountryCode
-   {$ENDIF SHOW_GEO_BY_IP}
-  end;
-  TLogDatas = array of TLogData;
+
+type
 
   { TmainFrm }
 
@@ -627,7 +631,11 @@ type
     procedure onLoadPrefsChange(Sender: TObject);
     procedure onShowPrefsChange(Sender: TObject);
     procedure onLogPrefsChange(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
+ {$IFDEF SHOW_GEO_BY_IP}
+    geoip: TGeoIP;
+ {$ENDIF SHOW_GEO_BY_IP}
     FLogLock: TCriticalSection;
     FLogArr: TLogDatas;
     FIsBrowserReady: Boolean;
@@ -647,8 +655,8 @@ type
     procedure downloadtrayEvent(sender: Tobject; ev: TtrayEvent);
     function  pointedFile(strict: boolean=TRUE): Tfile;
     function  pointedConnection(point: TPoint): TconnData;
-    procedure updateSbar();
     function  selectedConnection(): TconnData;
+    procedure updateSbar();
     procedure setTheme(const pThemeName: String; pForce: Boolean = false);
     procedure ipmenuclick(Sender: Tobject);
     procedure acceptOnMenuclick(sender: TObject);
@@ -659,15 +667,15 @@ type
 //    procedure setTrayShows(s: String);
     procedure setTrayShows(s: TTrayShows);
     procedure addTray();
-    procedure onRefreshConn(conn: TconnData);
-    procedure refreshConn(conn: TconnData; checkProgress: Boolean = True);
-//    function  getVFS(node: TFileNode=NIL): RawByteString;
-//    function  getVFSJZ(node: TFileNode=NIL): RawByteString;
+    procedure onRefreshConn(conn: TconnDataMain);
+    procedure refreshConn(conn: TconnDataMain; checkProgress: Boolean = True);
+    procedure onSetupDownloadIcon(conn: TconnDataMain);
     function  getFullVFS: RawByteString;
     function  getFullVFSJZ: RawByteString;
     procedure setnoDownloadTimeout(v:integer);
     procedure addDropFiles(hnd: Thandle; under: TFileNode);
     procedure pasteFiles();
+    function  addFilesFromArray(files: TStringDynArray; under: TFileNode=NIL): Tfile;
     function  addFilesFromString(files: String; under: TFileNode=NIL): Tfile;
     procedure setGraphRate(v: Integer);
     procedure updateRecentFilesMenu();
@@ -696,12 +704,10 @@ type
     easyMode: boolean;
     selectedFile: Tfile;  // last selected file on the tree
     function  statusBarHttpProgress(p: real): Boolean;
-    function  getLP: TLoadPrefs;
-    function  getSP: TShowPrefs;
-    function  getLogP: TLogPrefs;
     procedure onAddingItemOnServer;
     procedure onIPsEverChanged;
     procedure remove(f: TFile=NIL); OverLoad;
+    procedure updateGui;
     function  setCfg(const cfg: String; alreadyStarted: Boolean=TRUE): Boolean;
     function  getCfg(exclude: String=''; skipTotals: Boolean = false): String;
     function  saveCFG(): Boolean;
@@ -709,8 +715,10 @@ type
     function  addFile(f: TFile; parent: TFileNode; skipComment: boolean; var newNode: TFileNode): TFile; OverLoad;
     procedure OnBeforeAddFile(Sender: TObject);
     procedure OnAfterAddFile(f: Tfile; parentNode, node: TTreeNode; skipComment: Boolean; addingStoped: Boolean);
-    procedure add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
-    procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor = Graphics.clDefault);
+//    procedure add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+    procedure add2logArr(data: TLogData);
+//    procedure add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor = Graphics.clDefault);
+    procedure add2Log(data: TLogData; doSync: Boolean = True);
     function  ipPointedInLog(): String;
     procedure saveVFS(fn: String='');
     function  finalInit(): boolean;
@@ -738,7 +746,7 @@ type
      procedure initGUIData(hndl: THandle; onEvent: TTrayEventHandle);
      procedure clearGuiData;
      //constructor createWithGui(conn: ThttpConn);
-     procedure setIcon(p: TIconParams);
+     //procedure setIcon(p: TIconParams);
      function  getIcoParams: TIconParams;
      procedure setIcoParams(p: TIconParams);
      property  IconParams: TIconParams read getIcoParams write setIcoParams;
@@ -1213,6 +1221,11 @@ resourcestring
   +#13
   +#13'Now anyone who has access to your HFS server can upload files to you.';
 
+resourcestring
+  msg_err_get_ips = 'Error getting adresses';
+  msg_err_get_ipv6 = 'Error getting IPv6 adresses';
+  msg_err_get_ipv4 = 'Error getting IPv4 adresses';
+
 // global variables
 var
   progFrm: TprogressForm;
@@ -1257,7 +1270,7 @@ end; // conn2data
 procedure repaintTray(fs: TFileServer);
 var
   n: Integer;
-  p: TIconParams;
+  ip: TIconParams;
 begin
   if quitting or (mainfrm = NIL) then
     exit;
@@ -1272,15 +1285,15 @@ begin
     n := 0;
   end;
   if trayShows <> TTrayShows.TS_none then
-    p.str := IntToStr(n)
+    ip.str := IntToStr(n)
    else
-    p.str := '';
-  p.isActive := fs.httpServIsActive;
-  p.perc := 0;
-  p.size := TRAY_ICON_SIZE;
-  if setTrayIcon(tray_ico, main_ico_params, p) then
+    ip.str := '';
+  ip.isActive := fs.httpServIsActive;
+  ip.perc := 0;
+  ip.size := TRAY_ICON_SIZE;
+  if setTrayIcon(tray_ico, main_ico_params, ip) then
    begin
-     main_ico_params := p;
+     main_ico_params := ip;
      tray.setIcon(tray_ico);
    end;
 end; // repaintTray
@@ -1365,13 +1378,13 @@ begin
   end;
   if s > '' then
     dyndns.lastResult:=s;
-  if not mainfrm.logOtherEventsChk.checked then
+  if not (logOtherEvents in LogPrefs) then // logOtherEventsChk.checked then
     exit;
   if length(s) > 30 then
     s := format(MSG_DDNS_REPLY_SIZE, [length(s)])
    else
     s := interpretResponse(s);
-  mainfrm.add2log(format(MSG_DDNS_REQ, [dyndns.lastIP,s]));
+  add2log(format(MSG_DDNS_REQ, [dyndns.lastIP,s]));
   if dyndns.active then
     dyndns.lastIP:=externalIP
    else
@@ -1431,129 +1444,6 @@ begin
   result := TRUE;
 end; // banAddress
 
-function Tmainfrm.getLP: TLoadPrefs;
-  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TLoadPrefsVal; var sp: TLoadPrefs); Inline;
-  begin
-    if pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TLoadPrefsVal; var sp: TLoadPrefs); Inline;
-  begin
-    if not pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-begin
-  Result := [];
-  includeChecked(supportDescriptionChk, lpION, Result);
-  includeChecked(listfileswithsystemattributeChk, lpSysAttr, Result);
-  includeChecked(listfileswithHiddenAttributeChk, lpHdnAttr, Result);
-  includeChecked(loadSingleCommentsChk, lpSnglCmnt, Result);
-  includeChecked(fingerprintsChk, lpFingerPrints, Result);
-//  includeChecked(recursiveListingChk, lpRecurListing, Result);
-
-  includeChecked(hideProtectedItemsChk, lpHideProt, Result);
-
-  includeChecked(oemForIonChk, lpOEMForION, Result);
-  includeChecked(deletePartialUploadsChk, lpDeletePartialUploads, Result);
-  includeChecked(NumberFilesOnUploadChk, lpNumberFilesOnUpload, Result);
-  includeChecked(useCommentAsRealmChk, lpUseCommentAsRealm, Result);
-end;
-
-function Tmainfrm.getSP: TShowPrefs;
-  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TShowPrefsVal; var sp: TShowPrefs); Inline;
-  begin
-    if pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TShowPrefsVal; var sp: TShowPrefs); Inline;
-  begin
-    if not pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-begin
-  Result := [];
-
-  includeChecked(useSystemIconsChk, spUseSysIcons, Result);
-  if True then
-    Include(Result, spNoWaitSysIcons);
-  includeChecked(httpsUrlsChk, spHttpsUrls, Result);
-  includeChecked(foldersBeforeChk, spFoldersBefore, Result);
-  includeChecked(linksBeforeChk, spLinksBefore, Result);
-
-  includeChecked(noPortInUrlChk, spNoPortInUrl, Result);
-  includeChecked(encodenonasciiChk, spEncodeNonascii, Result);
-  includeChecked(encodeSpacesChk, spEncodeSpaces, Result);
-  includeChecked(compressedbrowsingChk, spCompressed, Result);
-  includeChecked(CompressZIPstreamsChk, spCompressedZip, Result);
-  includeChecked(sendHFSidentifierChk, spSendHFSIdentifier, Result);
-  includeChecked(freeLoginChk, spFreeLogin, Result);
-  includeChecked(stopSpidersChk, spStopSpiders, Result);
-  includeChecked(preventLeechingChk, spPreventLeeching, Result);
-  includeChecked(pwdInPagesChk, spPwdInPages, Result);
-  includeChecked(enableNoDefaultChk, spEnableNoDefault, Result);
-  includeChecked(DMbrowserTplChk, spDMbrowserTpl, Result);
-  includeChecked(enableMacrosChk, spEnableMacros, Result);
-  includeChecked(disableMacrosNonLocalIPChk, spNonLocalIPDisableMacros, Result);
-
-
-  includeChecked(recursiveListingChk, spRecursiveListing, Result);
-  includeChecked(oemTarChk, spOemTar, Result);
-  includeChecked(noContentdispositionChk, spNoContentDisposition, Result);
-  includeChecked(preventStandbyChk, spPreventStandby, Result);
-end;
-
-function Tmainfrm.getLogP: TLogPrefs;
-  procedure includeChecked(pCheckBox: TMenuItem; pToInclude: TLogPrefsVal; var sp: TLogPrefs); Inline;
-  begin
-    if pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-  procedure includeUnChecked(pCheckBox: TMenuItem; pToInclude: TLogPrefsVal; var sp: TLogPrefs); Inline;
-  begin
-    if not pCheckBox.Checked then
-      Include(sp, pToInclude);
-  end;
-begin
-  Result := [];
-  if logBannedChk.Checked then
-    Include(Result, logBanned);
-  if LogiconsChk.Checked then
-    Include(Result, logIcons);
-  if logBrowsingChk.Checked then
-    Include(Result, logBrowsing);
-  if logProgressChk.Checked then
-    Include(Result, logProgress);
-  if logServerstartChk.Checked then
-    Include(Result, logServerstart);
-  if logServerstopChk.Checked then
-    Include(Result, logServerstop);
-  if logconnectionsChk.Checked then
-    Include(Result, logconnections);
-  if logDisconnectionsChk.Checked then
-    Include(Result, logDisconnections);
-  if logUploadsChk.Checked then
-    Include(Result, logUploads);
-  if logFullDownloadsChk.Checked then
-    Include(Result, logFullDownloads);
-  if logDeletionsChk.Checked then
-    Include(Result, LogDeletions);
-  if logOtherEventsChk.Checked then
-    Include(Result, logOtherEvents);
-  if logBytesReceivedChk.Checked then
-    Include(Result, logBytesReceived);
-  if logBytesSentChk.Checked then
-    Include(Result, logBytesSent);
-  if logOnlyServedChk.Checked then
-    Include(Result, logOnlyServed);
-  if logRequestsChk.Checked then
-    Include(Result, logRequests);
-  if logRepliesChk.Checked then
-    Include(Result, logReplies);
-  if dumpRequestsChk.Checked then
-    Include(Result, dumpRequests);
-  if dumpTrafficChk.Checked then
-    Include(Result, dumpTraffic);
-end;
 
 procedure Tmainfrm.onAddingItemOnServer;
 begin
@@ -1591,7 +1481,7 @@ begin
   if old = defaultIP then
     exit;
   try
-    v := clipboard.AsText;
+    v := getClipText;
     if pos(old, v) = 0 then
       exit;
    except
@@ -1605,61 +1495,6 @@ with sender as TMenuItem do
   if dyndns.active and (dyndns.url > '') and checked then
     checked := msgDlg(MSG_NOT_COMPAT, MB_ICONWARNING+MB_YESNO) = MRYES;
 end;
-
-procedure setupDownloadIcon(data: TconnData);
-var
-  tr: TmyTrayicon;
-//  ti: TIcon;
-  procedure painticon();
-  var
-    p: TIconParams;
-  begin
-    p.perc := safeDiv(0.0+data.conn.bytesSentLastItem, data.conn.bytesPartial);
-    p.str := intToStr( trunc(p.perc*100) )+'%';
-    p.isActive := mainFrm.fileSrv.httpServIsActive;
-    p.size := TRAY_ICON_SIZE;
-    data.setIcon(p);
-    tr.setTip(
-      data.getLastRequested
-      +trayNL+format('%.1f KB/s', [data.averageSpeed/1000])
-      +trayNL+dotted(data.conn.bytesSentLastItem)+' bytes sent'
-      +trayNL+data.address
-    );
-    tr.show();
-  end; // paintIcon
-
-begin
-  if (data = NIL) or (data.conn = NIL) then
-    exit;
-  tr := data.getTray;
-//  ti := data.getIcon;
-
-  if assigned(tr)
-   and data.isReplyFinished then
-  begin
-    data.clearGuiData;
-    tr.hide();
-    freeAndNIL(tr);
-//    ti.free;
-    exit;
-  end;
-  if not data.isSendingFile then
-    exit;
-
-  if not data.countAsDownload then
-    exit;
-
-  if tr = NIL then
-    begin
-      data.initGUIData(mainfrm.handle, mainfrm.downloadTrayEvent);
-      tr := data.getTray;
-//      ti := data.getIcon;
-    end;
-  if mainfrm.trayfordownloadChk.checked and data.isSendingFile then
-    paintIcon()
-   else
-    tr.hide();
-end; // setupDownloadIcon
 
 procedure OnInitConnData(data: TconnData);
 begin
@@ -1694,36 +1529,12 @@ begin
     mainFrm.updateTrayTip();
 end;
 
-{$IFDEF FPC}
-function GetLocaleStr(LID, LT: Longint; const Def: string): AnsiString;
-var
-  L: Integer;
-  Buf: unicodestring;
-begin
-  L := GetLocaleInfoW(LID, LT, nil, 0);
-  if L > 0 then
-    begin
-      SetLength(Buf,L-1); // L includes terminating NULL
-      if l>1 Then
-        L := GetLocaleInfoW(LID, LT, @Buf[1], L);
-      result:=buf;
-    end
-  else
-    Result := Def;
-end;
-{$ENDIF FPC}
-
-procedure applyISOdateFormat();
-begin
-  if mainfrm.useISOdateChk.checked then
-    FormatSettings.ShortDateFormat:='yyyy-mm-dd'
-   else
-     FormatSettings.ShortDateFormat:=GetLocaleStr(LOCALE_USER_DEFAULT, LOCALE_SSHORTDATE,'');
-end;
-
 procedure Tmainfrm.add2logData(var ld: TLogData; const lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
 var
   addr: String;
+ {$IFDEF SHOW_GEO_BY_IP}
+  cNum: Cardinal;
+ {$ENDIF SHOW_GEO_BY_IP}
 begin
   ld.lines := lines;
   ld.time := now;
@@ -1745,21 +1556,20 @@ begin
    else
     addr := '';
  {$IFDEF SHOW_GEO_BY_IP}
+  ld.countryNum := 0;
   if Assigned(cd) and not cd.isLocalAddress then
     begin
-      var cc: String;
       if not cd.isLocalAddress and Assigned(geoip) then
       try
-        cc := TConnDataGui(TconnData(cd).guiData).country.CountryCode;
-        if cc='' then
-          geoip.GetCountry(cd.address, TConnDataGui(TconnData(cd).guiData).country);
-        cc := TConnDataGui(TconnData(cd).guiData).country.CountryCode;
+        cNum := TConnDataGui(TconnData(cd).guiData).countryNum;
+        if cNum=0 then
+          geoip.GetCountryNum(cd.address, TConnDataGui(TconnData(cd).guiData).countryNum);
+        cNum := TConnDataGui(TconnData(cd).guiData).countryNum;
        except
-        TConnDataGui(TconnData(cd).guiData).country.CountryCode := '';
-        TConnDataGui(TconnData(cd).guiData).country.CountryName := '';
-        cc := '';
+        TConnDataGui(TconnData(cd).guiData).countryNum := 0;
+        cNum := 0;
       end;
-      ld.cc := cc;
+      ld.countryNum := cNum;
     end;
  {$ENDIF SHOW_GEO_BY_IP}
 
@@ -1770,37 +1580,51 @@ begin
   ld.fileDynName := getDynLogFilename(cd);
 end;
 
-procedure Tmainfrm.add2logArr(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
+procedure Tmainfrm.add2logArr(data: TLogData);
 begin
   // This must be thread safe, a log can be called all over the place
-  if not Assigned(FLogLock) then
-    begin
-      add2log(lines, cd, clr);
-      Exit;
-    end;
   FLogLock.Acquire;
   try
     SetLength(FLogArr, Length(FLogArr) + 1);
-    add2logData(FLogArr[ High(FLogArr)], lines, cd, clr);
+    FLogArr[ High(FLogArr)] := data;
    finally
     FLogLock.Release;
   end;
 end;
 
-procedure Tmainfrm.add2log(lines: String; cd: TconnDataMain=NIL; clr: Graphics.Tcolor= Graphics.clDefault);
-var
-  ld: TLogData;
+procedure Tmainfrm.add2Log(data: TLogData; doSync: Boolean = True);
+//var
+  //ld: TLogData;
 begin
-  if not logOnVideoChk.checked
-   and ((logFile.filename = '') or (logFile.apacheFormat > '')) then
+ {$IFDEF NO_GUI}
+  Exit;
+ {$ELSE GUI}
+  if not logOnVideoChk.checked then
     exit;
 
+ {$IFDEF SHOW_GEO_BY_IP}
+  if (data.address <> '') and not isLocalIP(data.address) then
+    begin
+      var cNum: Cardinal;
+      if Assigned(geoip) then
+      try
+        geoip.GetCountryNum(data.address, cNum);
+       except
+        cNum := 0;
+      end;
+      ld.countryNum := cNum;
+    end;
+ {$ENDIF SHOW_GEO_BY_IP}
+
+{
   onUpdateLogTimer;
 
-  add2logData(ld, lines, cd, clr);
+//  add2logData(ld, lines, cd, clr);
   //add2logInt(ld);
-  add2logInt2(ld);
-
+//  add2logInt2(ld);
+}
+  add2logArr(data);
+ {$ENDIF NO_GUI}
 end; // add2log
 
 function HtmlEscape(const S: string): string;
@@ -1852,8 +1676,7 @@ var
   Html, TimePart, AddrPart, MsgPart, ContPart: String;
   ColorCss: String;
 begin
-  if not logOnVideoChk.checked
-   and ((logFile.filename = '') or (logFile.apacheFormat > '')) then
+  if not logOnVideoChk.checked then
     exit;
 
   if data.clr = Graphics.clDefault then
@@ -1861,16 +1684,16 @@ begin
    else
     clr := data.clr;
 
-  if logDateChk.checked then
+  if LogDate in LogPrefs then
     begin
      applyISOdateFormat(); // this call shouldn't be necessary here, but it's a workaround to this bug www.rejetto.com/forum/?topic=5739
-     if logTimeChk.checked then
+     if LogTime in LogPrefs then
        ts := datetimeToStr(data.time)
       else
        ts := dateToStr(data.time)
     end
    else
-    if logTimeChk.checked then
+    if LogTime in LogPrefs then
       ts := timeToStr(data.time)
      else
       ts := '';
@@ -1880,28 +1703,11 @@ begin
     rest := ''
    else
     rest := reReplace(lines, '^', '> ')+CRLF;
- addr := data.addr;
+  addr := data.addr;
  {$IFDEF SHOW_GEO_BY_IP}
-  if data.cc > '' then
-    addr := addr + ' from {' + data.cc + '}';
+  if data.countryNum > 0 then
+    addr := addr + ' from {' + CountryCodes[data.countryNum] + '}';
  {$ENDIF SHOW_GEO_BY_IP}
-
-
-  if (logFile.filename > '') and (logFile.apacheFormat = '') then
-   begin
-    s := ts + data.fileStr +TAB+ first;
-
-    if tabOnLogFileChk.checked then
-      s := s+stripChars(reReplace(lines, '^', TAB),[#13,#10])
-     else
-      s := s+CRLF+rest;
-
-    includeTrailingString(s, CRLF);
-    appendFileU(data.fileDynName, s);
-   end;
-
-  if not logOnVideoChk.checked then
-    exit;
 
   if not FIsBrowserReady then
     Exit;
@@ -2066,7 +1872,7 @@ begin
       sayPortBusy(fs.htSrv.port);
   if (fs.getConnectionsCount = 0) or fs.httpServIsActive then
     exit;
-  if msgDLg(format(MSG_KICK_ALL,[fs.getConnectionsCount]), MB_ICONQUESTION+MB_YESNO) = IDYES then
+  if msgDLg(format(MSG_KICK_ALL, [fs.getConnectionsCount]), MB_ICONQUESTION+MB_YESNO) = IDYES then
     fs.kickByIP('*');
 end; // toggleServer
 
@@ -2279,8 +2085,9 @@ end; // createFingerprint
 
 procedure applyFilesBoxRatio();
 begin
-if filesBoxRatio <= 0 then exit;
-mainfrm.filesPnl.width:=round(filesBoxRatio*mainfrm.clientWidth);
+  if filesBoxRatio <= 0 then
+    exit;
+  mainfrm.filesPnl.width := round(filesBoxRatio*mainfrm.clientWidth);
 end; // applyFilesBoxRatio
 
 procedure TmainFrm.FormResize(Sender: TObject);
@@ -2401,16 +2208,18 @@ var
 begin
   n := filesBox.Selected;
   name := fileSrv.getUniqueNodeName('New link', n);
-  addfile(Tfile.createLink(fileSrv, name), n).node.Selected := TRUE;
+  addfile(fileSrv.createLink(name), n).node.Selected := TRUE;
   setURL1click(sender);
 end;
 
 procedure TmainFrm.newfolder1Click(Sender: TObject);
 var
   name: string;
+  n: TFileNode;
 begin
-  name := fileSrv.getUniqueNodeName('New folder', filesBox.selected);
-  with addFile(Tfile.createVirtualFolder(fileSrv, name), filesBox.Selected).node do
+  n := filesBox.selected;
+  name := fileSrv.getUniqueNodeName('New folder', n);
+  with addFile(fileSrv.createVirtualFolder(name), n).node do
   begin
     Selected:=TRUE;
     editText();
@@ -2506,26 +2315,27 @@ begin
    end;
 
   i := filesBox.SelectionCount;
-if (i = 0) or (i = 1) and selectedFile.isRoot() then exit;
-if not deleteDontAskChk.checked
-and (msgDlg(MSG_DELETE, MB_ICONQUESTION+MB_YESNO) = IDNO) then
-  exit;
-list:=copySelection();
+  if (i = 0) or (i = 1) and selectedFile.isRoot() then
+    exit;
+  if not deleteDontAskChk.checked
+    and (msgDlg(MSG_DELETE, MB_ICONQUESTION+MB_YESNO) = IDNO) then
+    exit;
+  list := copySelection();
 // now proceed
-warn:=FALSE;
-for i:=0 to length(list)-1 do
-  if assigned(list[i]) and assigned(list[i].parent) then
-    if assigned(list[i].data) and fileSrv.nodeIsLocked(list[i]) then
-      warn:=TRUE
-    else
-      begin
-      // avoid messing with children that will automatically be deleted as soon as the father is
-        setNilChildrenFrom(list, i);
-        list[i].Delete();
-      end;
+  warn := FALSE;
+  for i:=0 to length(list)-1 do
+    if assigned(list[i]) and assigned(list[i].parent) then
+      if assigned(list[i].data) and fileSrv.nodeIsLocked(list[i]) then
+        warn:=TRUE
+       else
+        begin
+         // avoid messing with children that will automatically be deleted as soon as the father is
+         setNilChildrenFrom(list, i);
+         list[i].Delete();
+        end;
 
-if warn then
-  msgDlg(MSG_SOME_LOCKED, MB_ICONWARNING);
+  if warn then
+    msgDlg(MSG_SOME_LOCKED, MB_ICONWARNING);
 end; // remove
 
 procedure TmainFrm.Remove1Click(Sender: TObject);
@@ -2617,7 +2427,7 @@ end; // setLogToolbar
 
 procedure TmainFrm.Kickconnection1Click(Sender: TObject);
 var
-  cd: TconnData;
+  cd: TconnDataMain;
 begin
   cd:=selectedConnection();
   if cd = NIL then
@@ -2676,7 +2486,7 @@ begin
   updateMenuSpeed(mainfrm.speedLimit1, MSG_SPD_LIMIT, v);
 end; // setSpeedLimit
 
-procedure autosaveClick(var rec: Tautosave; name: String);
+procedure autosaveClick(var rec: TautoSave; const name: String);
 var
   s: string;
   v: integer;
@@ -2748,21 +2558,21 @@ begin
   userIconMasks := '';
 //  iconMasksStr := iconMasksToStr();
   iconMasksStr := iconMasks.toStr(userIconMasks);
-  Result := 'HFS '+ srvConst.VERSION+' - Build #'+VERSION_BUILD+CRLF
+  Result := String('HFS '+ srvConst.VERSION+' - Build #'+VERSION_BUILD+CRLF)
 +'active='+yesno[fileSrv.httpServIsActive]+CRLF
 +'only-1-instance='+ yesnoCheck(only1instanceChk)+CRLF
 +'window='+rectToStr(lastWindowRect)+CRLF
 +'window-max='+yesno[windowState = wsMaximized]+CRLF
 +'easy='+yesno[easyMode]+CRLF
++'port='+port+CRLF
++'listen-on='+listenOn+CRLF
 +'files-box-ratio='+floatToStr(filesBoxRatio)+CRLF
 +'log-max-lines='+intToStr(logMaxLines)+CRLF
 //+'log-read-only='+yesno[logbox.readonly]+CRLF
 +'log-file-name='+logFile.filename+CRLF
 +'log-font-name='+logFontName+CRLF
 +'log-font-size='+intToStr(logFontSize)+CRLF
-+'log-date='+yesnoCheck(LogdateChk)+CRLF
-+'log-time='+ yesnoCheck(LogtimeChk)+CRLF
-+'log-to-screen='+ yesnoCheck(logOnVideoChk)+CRLF
+{
 +'log-only-served='+yesnoCheck(logOnlyServedChk)+CRLF
 +'log-server-start='+yesno[logServerstartChk.checked]+CRLF
 +'log-server-stop='+yesno[logServerstopChk.checked]+CRLF
@@ -2781,22 +2591,53 @@ begin
 +'log-progress='+yesno[logProgressChk.checked]+CRLF
 +'log-banned='+yesno[logBannedChk.checked]+CRLF
 +'log-others='+yesno[logOtherEventsChk.checked]+CRLF
-+'port='+port+CRLF
-+'listen-on='+listenOn+CRLF
++'log-date='+yesnoCheck(LogdateChk)+CRLF
++'log-time='+ yesnoCheck(LogtimeChk)+CRLF
++'log-to-screen='+ yesnoCheck(logOnVideoChk)+CRLF
 +'log-file-tabbed='+ yesnoCheck(tabOnLogFileChk)+CRLF
+}
+//+'support-descript.ion='+ yesnoCheck(supportDescriptionChk)+CRLF
+//+'list-system-files='+ yesnoCheck(listfileswithsystemattributeChk)+CRLF
+//+'list-hidden-files='+ yesnoCheck(listfileswithhiddenattributeChk)+CRLF
+//+'load-single-comment-files='+ yesnoCheck(loadSingleCommentsChk)+CRLF
+//+'enable-fingerprints='+ yesnoCheck(fingerprintsChk)+CRLF
+//+'list-protected-items='+ yesnoCheck(hideProtectedItemsChk)+CRLF
+//+'oem-descript.ion='+ yesnoCheck(oemForIonChk)+CRLF
+//+'delete-partial-uploads='+ yesnoCheck(deletePartialUploadsChk)+CRLF
+//+'number-files-on-upload='+ yesnoCheck(numberFilesOnUploadChk)+CRLF
+//+'use-comment-as-realm='+ yesnoCheck(usecommentasrealmChk)+CRLF
+//+'use-system-icons='+ yesnoCheck(usesystemiconsChk)+CRLF
+//+'https-url='+ yesnoCheck(httpsUrlsChk)+CRLF
+//+'folders-before='+ yesnoCheck(foldersbeforeChk)+CRLF
+//+'links-before='+ yesnoCheck(linksBeforeChk)+CRLF
+//+'dont-include-port-in-url='+ yesnoCheck(noPortInUrlChk)+CRLF
+//+'encode-non-ascii='+yesnoCheck(encodenonasciiChk)+CRLF
+//+'encode-spaces='+yesnoCheck(encodespacesChk)+CRLF
+//+'send-hfs-identifier='+ yesnoCheck(sendHFSidentifierChk)+CRLF
+//+'free-login='+ yesnoCheck(freeLoginChk)+CRLF
+//+'stop-spiders='+ yesnoCheck(stopSpidersChk)+CRLF
+//+'prevent-leeching='+ yesnoCheck(preventLeechingChk)+CRLF
+//+'enable-macros='+ yesnoCheck(enableMacrosChk)+CRLF
+//+'include-pwd-in-pages='+ yesnoCheck(pwdInPagesChk)+CRLF
+//+'enable-no-default='+ yesnoCheck(enableNoDefaultChk)+CRLF
+//+'getright-template='+ yesnoCheck(DMbrowserTplChk)+CRLF
+//+'recursive-listing='+ yesnoCheck(recursiveListingChk)+CRLF
+//+'oem-tar='+ yesnoCheck(oemTarChk)+CRLF
+//+'prevent-standby='+ yesnoCheck(preventStandbyChk)+CRLF
+//+'compressed-browsing='+ yesnoCheck(compressedbrowsingChk)+CRLF
+//+'compressed-zip-stream='+ yesnoCheck(CompressZIPstreamsChk)+CRLF
+//+'use-iso-date-format='+ yesnoCheck(useISOdateChk)+CRLF
 +'log-apache-format='+logfile.apacheFormat+CRLF
-+'tpl-file='+tplFilename+CRLF
-+'tpl-editor='+tplEditor+CRLF
-+'tpl-no-macros-file='+tplNoMacrosFN+CRLF
++'tpl-file='+String(tplFilename)+CRLF
++'tpl-editor='+String(tplEditor)+CRLF
++'tpl-no-macros-file='+String(tplNoMacrosFN)+CRLF
 +'delete-dont-ask='+ yesnoCheck(deleteDontAskChk)+CRLF
-+'free-login='+ yesnoCheck(freeLoginChk)+CRLF
 +'confirm-exit='+ yesnoCheck(confirmexitChk)+CRLF
 +'keep-bak-updating='+ yesnoCheck(keepBakUpdatingChk)+CRLF
-+'include-pwd-in-pages='+ yesnoCheck(pwdInPagesChk)+CRLF
 +'ip='+defaultIP+CRLF
-+'custom-ip='+join(';',customIPs)+CRLF
++'custom-ip='+String(join(';',customIPs))+CRLF
 +'external-ip-server='+customIPservice+CRLF
-+'dynamic-dns-updater='+b64utf8W(dyndns.url)+CRLF
++'dynamic-dns-updater='+b64utf8S(dyndns.url)+CRLF
 +'dynamic-dns-user='+dyndns.user+CRLF
 +'dynamic-dns-host='+dyndns.host+CRLF
 +'search-better-ip='+ yesnoCheck(searchbetteripChk)+CRLF
@@ -2804,43 +2645,23 @@ begin
 +'connections-height='+ intToStr(lastGoodConnHeight)+CRLF
 +'files-stay-flagged-for-minutes='+intToStr(filesStayFlaggedForMinutes)+CRLF
 +'auto-save-vfs='+ yesnoCheck(autosaveVFSchk)+CRLF
-+'folders-before='+ yesnoCheck(foldersbeforeChk)+CRLF
-+'links-before='+ yesnoCheck(linksBeforeChk)+CRLF
-+'use-comment-as-realm='+ yesnoCheck(usecommentasrealmChk)+CRLF
-+'getright-template='+ yesnoCheck(DMbrowserTplChk)+CRLF
 +'auto-save-options='+ yesnoCheck(autosaveoptionsChk)+CRLF
-+'dont-include-port-in-url='+ yesnoCheck(noPortInUrlChk)+CRLF
 +'persistent-connections='+ yesnoCheck(persistentconnectionsChk)+CRLF
 +'modal-options='+ yesnoCheck(modalOptionsChk)+CRLF
 +'beep-on-flash='+ yesnoCheck(beepChk)+CRLF
-+'prevent-leeching='+ yesnoCheck(preventLeechingChk)+CRLF
-+'delete-partial-uploads='+ yesnoCheck(deletePartialUploadsChk)+CRLF
 +'rename-partial-uploads='+renamePartialUploads+CRLF
-+'enable-macros='+ yesnoCheck(enableMacrosChk)+CRLF
-+'use-system-icons='+ yesnoCheck(usesystemiconsChk)+CRLF
 +'minimize-to-tray='+ yesnoCheck(MinimizetotrayChk)+CRLF
 +'tray-icon-for-each-download='+ yesnoCheck(trayfordownloadChk)+CRLF
 +'show-main-tray-icon='+ yesnoCheck(showmaintrayiconChk)+CRLF
 +'always-on-top='+ yesnoCheck(alwaysontopChk)+CRLF
 +'quit-dont-ask='+ yesnoCheck(quitWithoutAskingToSaveChk)+CRLF
-+'support-descript.ion='+ yesnoCheck(supportDescriptionChk)+CRLF
-+'oem-descript.ion='+ yesnoCheck(oemForIonChk)+CRLF
-+'oem-tar='+ yesnoCheck(oemTarChk)+CRLF
-+'enable-fingerprints='+ yesnoCheck(fingerprintsChk)+CRLF
 +'save-fingerprints='+ yesnoCheck(saveNewFingerprintsChk)+CRLF
 +'auto-fingerprint='+intToStr(autoFingerprint)+CRLF
-+'stop-spiders='+ yesnoCheck(stopSpidersChk)+CRLF
 +'backup-saving='+ yesnoCheck(backupSavingChk)+CRLF
-+'recursive-listing='+ yesnoCheck(recursiveListingChk)+CRLF
-+'send-hfs-identifier='+ yesnoCheck(sendHFSidentifierChk)+CRLF
-+'list-hidden-files='+ yesnoCheck(listfileswithhiddenattributeChk)+CRLF
-+'list-system-files='+ yesnoCheck(listfileswithsystemattributeChk)+CRLF
-+'list-protected-items='+ yesnoCheck(hideProtectedItemsChk)+CRLF
-+'enable-no-default='+ yesnoCheck(enableNoDefaultChk)+CRLF
 +'browse-localhost='+ yesnoCheck(browseUsingLocalhostChk)+CRLF
 +'add-folder-default='+addFolderDefault+CRLF
 +'default-sorting='+defSorting+CRLF
-+'last-dialog-folder='+lastDialogFolder+CRLF
++'last-dialog-folder='+String(lastDialogFolder)+CRLF
 +'auto-save-vfs-every='+intToStr(autosaveVFS.every)+CRLF
 +'last-update-check='+floatToStr(lastUpdateCheck)+CRLF
 +'allowed-referer='+allowedReferer+CRLF
@@ -2869,32 +2690,24 @@ begin
 +'last-run-folder='+exePath+CRLF
 +'last-file-open='+lastFileOpen+CRLF
 +'reload-on-startup='+ yesnoCheck(reloadonstartupChk)+CRLF
-+'https-url='+ yesnoCheck(httpsUrlsChk)+CRLF
 +'find-external-on-startup='+yesnoCheck(findExtOnStartupChk)+CRLF
-+'encode-non-ascii='+yesnoCheck(encodenonasciiChk)+CRLF
-+'encode-spaces='+yesnoCheck(encodespacesChk)+CRLF
-+'mime-types='+join('|',mimeTypes)+CRLF
++'mime-types='+String(join('|',mimeTypes))+CRLF
 +'in-browser-if-mime='+yesno[inBrowserIfMIME]+CRLF
 +'icon-masks='+iconMasksStr+CRLF
 +'icon-masks-user-images='+userIconMasks+CRLF
-+'address2name='+join('|',address2name)+CRLF
-+'recent-files='+join('|',recentFiles)+CRLF
-+'trusted-files='+join('|',trustedFiles)+CRLF
++'address2name='+String(join('|',address2name))+CRLF
++'recent-files='+String(join('|',recentFiles))+CRLF
++'trusted-files='+String(join('|',trustedFiles))+CRLF
 +'accounts='+ accounts.ToStr()+CRLF
 +'account-notes-wrap='+ yesnoCheck(optionsFrm.notesWrapChk)+CRLF
 +'tray-instead-of-quit='+ yesnoCheck(trayInsteadOfQuitChk)+CRLF
-+'compressed-browsing='+ yesnoCheck(compressedbrowsingChk)+CRLF
-+'compressed-zip-stream='+ yesnoCheck(CompressZIPstreamsChk)+CRLF
-+'use-iso-date-format='+ yesnoCheck(useISOdateChk)+CRLF
 +'hints4newcomers='+ yesnoCheck(HintsfornewcomersChk)+CRLF
 +'save-totals='+ yesnoCheck(saveTotalsChk)+CRLF
 +'log-toolbar-expanded='+yesno[mainfrm.expandedPnl.visible]+CRLF
-+'number-files-on-upload='+ yesnoCheck(numberFilesOnUploadChk)+CRLF
 +'do-not-log-address='+dontLogAddressMask+CRLF
 +'last-external-address='+dyndns.lastIP+CRLF
 +'min-disk-space='+intToStr(minDiskSpace)+CRLF
 +'many-items-warning='+yesno[warnManyItems]+CRLF
-+'load-single-comment-files='+ yesnoCheck(loadSingleCommentsChk)+CRLF
 +'copy-url-on-start='+ yesnoCheck(autocopyURLonstartChk)+CRLF
 +'connections-columns='+connColumnsToStr()+CRLF
 +'auto-comment='+ yesnoCheck(autoCommentChk)+CRLF
@@ -2902,10 +2715,9 @@ begin
 +'delayed-update='+ yesnoCheck(delayUpdateChk)+CRLF
 +'tester-updates='+ yesnoCheck(testerUpdatesChk)+CRLF
 +'copy-url-on-addition='+ yesnoCheck(AutocopyURLonadditionChk)+CRLF
-+'ip-services='+join(';',IPservices)+CRLF
++'ip-services='+String(join(';',IPservices))+CRLF
 +'ip-services-time='+floatToStr(IPservicesTime)+CRLF
 +'update-automatically='+ yesnoCheck(updateAutomaticallyChk)+CRLF
-+'prevent-standby='+ yesnoCheck(preventStandbyChk)+CRLF
 +'thumbs-get-for='+thumbsShowToExtStr+CRLF
 +'theme-selected='+themeSelected+CRLF
 ;
@@ -3132,12 +2944,6 @@ begin
       if h = 'keep-bak-updating' then
         CheckYes(keepBakUpdatingChk)
        else
-      if h = 'encode-non-ascii' then
-        encodenonasciiChk.checked := yes
-       else
-      if h = 'encode-spaces' then
-        encodespacesChk.checked := yes
-       else
       if h = 'search-better-ip' then
         CheckYes(searchbetteripChk)
        else
@@ -3159,41 +2965,81 @@ begin
       if h = 'log-font-size' then
         logFontSize := int
        else
-      if h = 'log-date' then
-        CheckYes(LogdateChk)
-       else
-      if h = 'log-time' then
-        CheckYes(LogtimeChk)
-       else
       //if h = 'log-read-only' then
         //logbox.readonly := yes;
-      if h = 'log-browsing' then
-        logBrowsingChk.checked:=yes;
-      if h = 'log-icons' then logIconsChk.checked:=yes;
-    if h = 'log-progress' then logProgressChk.checked:=yes;
-    if h = 'log-banned' then logBannedChk.checked:=yes;
-    if h = 'log-others' then logOtherEventsChk.checked:=yes;
-    if h = 'log-dump-request' then DumprequestsChk.checked:=yes;
-    if h = 'log-server-start' then logServerstartChk.checked:=yes;
-    if h = 'log-server-stop' then logServerstopChk.checked:=yes;
-    if h = 'log-connections' then logConnectionsChk.checked:=yes;
-    if h = 'log-disconnections' then logDisconnectionsChk.checked:=yes;
-    if h = 'log-bytes-sent' then logBytessentChk.checked:=yes;
-    if h = 'log-bytes-received' then logBytesreceivedChk.checked:=yes;
-    if h = 'log-replies' then logRepliesChk.checked:=yes;
-    if h = 'log-requests' then logRequestsChk.checked:=yes;
-    if h = 'log-uploads' then logUploadsChk.checked:=yes;
-    if h = 'log-deletions' then logDeletionsChk.checked:=yes;
-    if h = 'log-full-downloads' then logFulldownloadsChk.checked:=yes;
-    if h = 'log-apache-format' then logfile.apacheFormat:=l;
-    if h = 'log-only-served' then logOnlyServedChk.checked:=yes;
-    if h = 'log-to-screen' then logOnVideoChk.checked:=yes;
-    if h = 'log-file-tabbed' then tabOnLogFileChk.checked:=yes;
+      //if srvPreferences.Contains(h) then
+      if srvPreferences.IndexOf(h)>=0 then
+        fileSrv.prefs.addPrefBool(h, yes)
+       else
+{
+      if (h = 'log-banned') or
+         (h = 'log-icons') or
+         (h = 'log-browsing') or
+         (h = 'log-progress') or
+         (h = 'log-server-start') or
+         (h = 'log-server-stop') or
+         (h = 'log-connections') or
+         (h = 'log-disconnections') or
+         (h = 'log-uploads') or
+         (h = 'log-full-downloads') or
+         (h = 'log-deletions') or
+         (h = 'log-others') or
+         (h = 'log-bytes-received') or
+         (h = 'log-bytes-sent') or
+         (h = 'log-only-served') or
+         (h = 'log-requests') or
+         (h = 'log-replies') or
+         (h = 'log-dump-request') or
+         (h = 'log-macros') or
+         (h = 'log-date') or
+         (h = 'log-time') or
+         (h = 'log-to-screen') or
+         (h = 'log-file-tabbed') or
+         (h = 'support-descript.ion') or
+         (h = 'list-system-files') or
+         (h = 'list-hidden-files') or
+         (h = 'load-single-comment-files') or
+         (h = 'enable-fingerprints') or
+         (h = 'list-protected-items') or
+         (h = 'oem-tar') or
+         (h = 'oem-descript.ion') or
+         (h = 'delete-partial-uploads') or
+         (h = 'number-files-on-upload') or
+         (h = 'use-comment-as-realm') or
+         (h = 'use-system-icons') or
+         (h = 'https-url') or
+         (h = 'folders-before') or
+         (h = 'links-before') or
+         (h = 'dont-include-port-in-url') or
+         (h = 'encode-non-ascii') or
+         (h = 'encode-spaces') or
+         (h = 'compressed-browsing') or
+         (h = 'send-hfs-identifier') or
+         (h = 'free-login') or
+         (h = 'stop-spiders') or
+         (h = 'prevent-leeching') or
+         (h = 'enable-macros') or
+         (h = 'include-pwd-in-pages') or
+         (h = 'enable-no-default') or
+         (h = 'getright-template') or
+         (h = 'recursive-listing') or
+         (h = 'prevent-standby') or
+         (h = 'compressed-zip-stream')
+         (h = 'use-iso-date-format')
+       then
+        begin
+          fileSrv.prefs.addPrefBool(h, yes);
+        end
+       else
+}
+      if h = 'log-apache-format' then
+        logfile.apacheFormat := l
+       else
       if h = 'confirm-exit' then
-        confirmexitChk.checked := yes
+        CheckYes(confirmExitChk)
        else
       if h = 'backup-saving' then
-        backupSavingChk.checked := yes
+        CheckYes(backupSavingChk)
        else
       if h = 'connections-height' then
         lastGoodConnHeight := int
@@ -3201,29 +3047,14 @@ begin
       if h = 'files-stay-flagged-for-minutes'then
         filesStayFlaggedForMinutes := int
        else
-      if h = 'folders-before' then
-        foldersbeforeChk.checked := yes
-       else
-      if h = 'include-pwd-in-pages' then
-        pwdInPagesChk.Checked := yes
-       else
       if h = 'minimize-to-tray' then
-        MinimizetotrayChk.checked := yes
-       else
-      if h = 'prevent-standby' then
-        preventStandbyChk.checked := yes
-       else
-      if h = 'use-system-icons' then
-        usesystemiconsChk.checked := yes
+        CheckYes(MinimizetotrayChk)
        else
       if h = 'quit-dont-ask' then
-        quitWithoutAskingToSaveChk.checked := yes
+        CheckYes(quitWithoutAskingToSaveChk)
        else
       if h = 'auto-save-options' then
-        autosaveoptionsChk.checked := yes
-       else
-      if h = 'use-comment-as-realm' then
-        usecommentasrealmChk.checked := yes
+        CheckYes(autosaveoptionsChk)
        else
       if h = 'persistent-connections'then
         CheckYes(persistentconnectionsChk)
@@ -3243,9 +3074,6 @@ begin
       if h = 'copy-url-on-start' then
         CheckYes(autocopyURLonstartChk)
        else
-      if h = 'enable-macros' then
-        CheckYes(enableMacrosChk)
-       else
       if h = 'update-daily' then
         CheckYes(updateDailyChk)
        else
@@ -3258,41 +3086,11 @@ begin
       if h = 'beep-on-flash' then
         CheckYes(beepChk)
        else
-      if h = 'prevent-leeching' then
-        preventLeechingChk.checked := yes
-       else
-      if h = 'list-hidden-files' then
-        listfileswithhiddenattributeChk.checked := yes
-       else
-      if h = 'list-system-files' then
-        listfileswithsystemattributeChk.checked := yes
-       else
-      if h = 'list-protected-items' then
-        hideProtectedItemsChk.checked := yes
-       else
       if h = 'always-on-top' then
-        alwaysontopChk.checked := yes
-       else
-      if h = 'support-descript.ion' then
-        supportDescriptionChk.Checked := yes
-       else
-      if h = 'oem-descript.ion' then
-        oemForIonChk.checked := yes
-       else
-      if h = 'oem-tar' then
-        oemTarChk.checked := yes
-       else
-      if h = 'free-login' then
-        freeLoginChk.checked := yes
-       else
-      if h = 'https-url' then
-        httpsUrlsChk.checked := yes
-       else
-      if h = 'enable-fingerprints' then
-        fingerprintsChk.checked := yes
+        CheckYes(alwaysontopChk)
        else
       if h = 'save-fingerprints' then
-        saveNewFingerprintsChk.checked := yes
+        CheckYes(saveNewFingerprintsChk)
        else
       if h = 'auto-fingerprint' then
         setAutoFingerprint(int)
@@ -3303,14 +3101,8 @@ begin
       if h = 'last-update-check' then
         lastUpdateCheck := real
        else
-      if h = 'recursive-listing' then
-        recursiveListingChk.checked := yes
-       else
-      if h = 'enable-no-default' then
-        enableNoDefaultChk.checked := yes
-       else
       if h = 'browse-localhost' then
-        browseUsingLocalhostChk.checked := yes
+        CheckYes(browseUsingLocalhostChk)
        else
       if h = 'tpl-file' then
         tplFilename := l
@@ -3330,17 +3122,11 @@ begin
       if h = 'last-dialog-folder' then
         lastDialogFolder := l
        else
-      if h = 'send-hfs-identifier' then
-        sendHFSidentifierChk.checked := yes
-       else
       if h = 'auto-save-vfs' then
-        autosaveVFSchk.checked := yes
+        CheckYes(autosaveVFSchk)
        else
       if h = 'add-to-folder' then
         addToFolder := l
-       else
-      if h = 'getright-template' then
-        DMbrowserTplChk.checked := yes
        else
       if h = 'speed-limit' then
         setSpeedLimit(real)
@@ -3382,7 +3168,7 @@ begin
         noReplyBan := yes
        else
       if h = 'save-totals' then
-        saveTotalsChk.checked := yes
+        CheckYes(saveTotalsChk)
        else
       if h = 'allowed-referer' then
         allowedReferer := l
@@ -3397,16 +3183,10 @@ begin
         lastFileOpen := l
        else
       if h = 'reload-on-startup' then
-        reloadonstartupChk.checked := yes
-       else
-      if h = 'stop-spiders' then
-        stopSpidersChk.checked := yes
+        CheckYes(reloadonstartupChk)
        else
       if h = 'find-external-on-startup' then
-        findExtOnStartupChk.checked := yes
-       else
-      if h = 'dont-include-port-in-url' then
-        noPortInUrlChk.checked := yes
+        CheckYes(findExtOnStartupChk)
        else
       if h = 'tray-shows' then
         trayshows := strToTrayShow(l)
@@ -3418,7 +3198,7 @@ begin
         customIPservice := l
        else
       if h = 'only-1-instance' then
-        only1instanceChk.checked := yes
+        CheckYes(only1instanceChk)
        else
       if h = 'graph-rate' then
         setGraphRate(int)
@@ -3428,9 +3208,6 @@ begin
        else
       if h = 'forwarded-mask' then
         forwardedMask:=ifThen(l='127.0.0.1','::1;127.0.0.1',l)
-       else
-      if h = 'delete-partial-uploads' then
-        deletePartialUploadsChk.checked := yes
        else
       if h = 'rename-partial-uploads' then
         renamePartialUploads := l
@@ -3483,35 +3260,20 @@ begin
       if h = 'address2name' then
         address2name := UnicodeSplit('|',l)
        else
-      if h = 'compressed-browsing' then
-        compressedbrowsingChk.checked := yes
-       else
-      if h='compressed-zip-stream=' then
-        CompressZIPstreamsChk.Checked := yes
-       else
       if h = 'hints4newcomers' then
-        HintsfornewcomersChk.checked := yes
+        CheckYes(HintsfornewcomersChk)
        else
       if h = 'tester-updates' then
-        testerUpdatesChk.checked := yes
-       else
-      if h = 'number-files-on-upload' then
-        numberFilesOnUploadChk.checked := yes
+        CheckYes(testerUpdatesChk)
        else
       if h = 'many-items-warning' then
         warnManyItems := yes
        else
-      if h = 'load-single-comment-files' then
-        loadSingleCommentsChk.checked := yes
-       else
       if h = 'accounts' then
         accounts.fromStr(l)
        else
-      if h = 'use-iso-date-format' then
-        useISOdateChk.Checked := yes
-       else
       if h = 'auto-comment' then
-        autoCommentChk.checked := yes
+        CheckYes(autoCommentChk)
        else
       if h = 'icon-masks-user-images' then
         iconMasks.AddUserIconMasksFromStr(l)
@@ -3533,9 +3295,6 @@ begin
        else
       if h = 'delayed-update' then
         CheckYes(delayUpdateChk)
-       else
-      if h = 'links-before' then
-        linksBeforeChk.checked := yes
        else
       if h = 'account-notes-wrap' then
         CheckYes(optionsFrm.notesWrapChk)
@@ -3563,6 +3322,12 @@ begin
      except
     end;
   end;
+
+  fileSrv.syncSP;
+  fileSrv.syncLP;
+  fileSrv.syncLogP;
+
+  updateGui;
 
   if not alreadyStarted then
   // i was already seeing all the stuff, so please don't hide it
@@ -3594,10 +3359,6 @@ applyISOdateFormat();
 for i:=0 to length(MIMEtypes)-1 do
   MIMEtypes[i]:=trim(MIMEtypes[i]);
 
-  fileSrv.syncSP;
-  fileSrv.syncLP;
-  fileSrv.syncLogP;
-
   addMissingMimeTypes();
   for i:=0 to length(warnings)-1 do
     msgDlg(warnings[i], MB_ICONWARNING);
@@ -3612,6 +3373,108 @@ for i:=0 to length(MIMEtypes)-1 do
 
   updateCurrentCFG();
 end; // setcfg
+
+procedure TmainFrm.updateGui;
+  procedure getVal(menuItem: TMenuItem); OverLoad;
+  begin
+    if menuItem.Hint <> '' then
+      begin
+       {$IFDEF FMX}
+        menuItem.isChecked
+       {$ELSE !FMX}
+        menuItem.Checked
+       {$ENDIF FMX}
+         := fileSrv.prefs.getDPrefBool(menuItem.Hint);
+      end;
+  end;
+  procedure getVal(menuItem: TMenuItem; val: TShowPrefsVal); OverLoad;
+  begin
+   {$IFDEF FMX}
+    menuItem.isChecked
+   {$ELSE !FMX}
+    menuItem.Checked
+   {$ENDIF FMX}
+      := fileSrv.prefs.getPrefBoolDef(cShowPrefs[val].pCode, cShowPrefs[val].pDefault);
+  end;
+  procedure getVal(menuItem: TMenuItem; val: TLoadPrefsVal); OverLoad;
+  begin
+   {$IFDEF FMX}
+    menuItem.isChecked
+   {$ELSE !FMX}
+    menuItem.Checked
+   {$ENDIF FMX}
+      := fileSrv.prefs.getPrefBoolDef(cLoadPrefs[val].pCode, cLoadPrefs[val].pDefault);
+  end;
+begin
+  getVal(useSystemIconsChk, spUseSysIcons);
+  getVal(httpsUrlsChk, spHttpsUrls);
+  getVal(foldersBeforeChk, spFoldersBefore);
+  getVal(linksBeforeChk, spLinksBefore);
+
+  getVal(noPortInUrlChk, spNoPortInUrl);
+  getVal(encodenonasciiChk, spEncodeNonascii);
+  getVal(encodeSpacesChk, spEncodeSpaces);
+  getVal(compressedbrowsingChk, spCompressed);
+  //getVal(CompressZIPstreamsChk, spCompressedZip);
+  getVal(sendHFSidentifierChk, spSendHFSIdentifier);
+  getVal(freeLoginChk, spFreeLogin);
+  getVal(stopSpidersChk, spStopSpiders);
+  getVal(preventLeechingChk, spPreventLeeching);
+  getVal(pwdInPagesChk, spPwdInPages);
+  getVal(enableNoDefaultChk, spEnableNoDefault);
+  getVal(DMbrowserTplChk, spDMbrowserTpl);
+  getVal(enableMacrosChk, spEnableMacros);
+  getVal(disableMacrosNonLocalIPChk, spNonLocalIPDisableMacros);
+
+
+  getVal(recursiveListingChk, spRecursiveListing);
+  getVal(oemTarChk, spOemTar);
+  getVal(noContentdispositionChk, spNoContentDisposition);
+  getVal(preventStandbyChk, spPreventStandby);
+
+
+  getVal(supportDescriptionChk, lpION);
+  getVal(listfileswithsystemattributeChk, lpSysAttr);
+  getVal(listfileswithHiddenAttributeChk, lpHdnAttr);
+  getVal(loadSingleCommentsChk, lpSnglCmnt);
+  getVal(fingerprintsChk, lpFingerPrints);
+//  includeChecked(recursiveListingChk, lpRecurListing, Result);
+
+  getVal(hideProtectedItemsChk, lpHideProt);
+
+  getVal(oemForIonChk, lpOEMForION);
+  getVal(deletePartialUploadsChk, lpDeletePartialUploads);
+  getVal(NumberFilesOnUploadChk, lpNumberFilesOnUpload);
+  getVal(useCommentAsRealmChk, lpUseCommentAsRealm);
+
+  getVal(logBannedChk);
+  getVal(logIconsChk);
+  getVal(logBrowsingChk);
+  getVal(logProgressChk);
+  getVal(logServerstartChk);
+  getVal(logServerstopChk);
+  getVal(logConnectionsChk);
+  getVal(logDisconnectionsChk);
+  getVal(logUploadsChk);
+  getVal(logFulldownloadsChk);
+  getVal(logDeletionsChk);
+  getVal(logOtherEventsChk);
+  getVal(logBytesreceivedChk);
+  getVal(logBytessentChk);
+  getVal(logOnlyServedChk);
+  getVal(logRequestsChk);
+  getVal(logRepliesChk);
+  getVal(DumprequestsChk);
+
+  getVal(LogdateChk);
+  getVal(LogtimeChk);
+  getVal(logOnVideoChk);
+  getVal(tabOnLogFileChk);
+  getVal(useISOdateChk);
+
+
+  getVal(macrosLogChk);
+end;
 
 function loadCfg(var ini: String; Const tpl: String): Boolean;
 
@@ -3871,10 +3734,10 @@ begin
   result := FALSE;
   if srv = NIL then
     exit;
-if quitting and (backuppedCfg > '') then
-  cfg := backuppedCfg
-else
-  cfg := getCfg();
+  if quitting and (backuppedCfg > '') then
+    cfg := backuppedCfg
+   else
+    cfg := getCfg();
 case saveMode of
 	SM_FILE:
   	begin
@@ -3959,12 +3822,14 @@ begin
       if assigned(data.conn) and data.conn.dontFree then
         continue;
       toDelete[i+1] := NIL;
-      setupDownloadIcon(data);
+      //setupDownloadIcon(data);
+      Self.onSetupDownloadIcon(data);
       data.lastFile := NIL; // auto-freeing
 
       if assigned(data.limiter) then
         begin
-          srv.limiters.remove(data.limiter);
+//          srv.limiters.remove(data.limiter);
+          fileSrv.removeLimiter(data.limiter);
           freeAndNIL(data.limiter);
         end;
       if assigned(data.conn) then
@@ -4055,7 +3920,7 @@ begin
   if mainfrm.delayUpdateChk.checked
   and (mainfrm.fileSrv.getConnectionsCount > 0) then
     begin
-      updateASAP:=url;
+      updateASAP := url;
       stopServer(mainfrm.fileSrv.htSrv);
       mainfrm.kickidleconnections1Click(NIL);
       mainfrm.setStatusBarText(MSG_UPD_WAIT, 20);
@@ -4083,7 +3948,7 @@ begin
         if not lockTimerevent then
           msgDlg(MSG_UPD_SAVE_ERROR, MB_ICONERROR);
         exit;
-        end;
+      end;
    finally
     progFrm.hide()
   end;
@@ -4156,7 +4021,7 @@ var
   info: Ttpl;
   updateURL, ver, build: String;
 
-  function thereSnew(const kind: String): Boolean;
+  function thereSnew(const kind: TSectionName): Boolean;
   var
     s: string;
   begin
@@ -4178,8 +4043,8 @@ begin
     info:=downloadUpdateInfo();
     if info = NIL then
       begin
-        if logOtherEventsChk.checked then
-          add2log(MSG_CHK_UPD_FAIL);
+        if logOtherEvents in LogPrefs then
+          logLib.add2log(MSG_CHK_UPD_FAIL);
         setStatusBarText(MSG_CHK_UPD_FAIL);
         exit;
       end;
@@ -4189,8 +4054,8 @@ begin
     // same version? we show build number
     if ver = srvConst.VERSION then
       ver := format(MSG_CHK_UPD_VER_EXT, [build, VERSION_BUILD]);
-    if logOtherEventsChk.checked then
-      add2log(MSG_CHK_UPD_HEAD+ifThen(updateURL = '', MSG_CHK_UPD_NONE, format(MSG_CHK_UPD_VER,[ver])));
+    if logOtherEvents in LogPrefs then
+      logLib.add2log(MSG_CHK_UPD_HEAD+ifThen(updateURL = '', MSG_CHK_UPD_NONE, format(MSG_CHK_UPD_VER,[ver])));
     parseVersionNotice(info['version notice']);
     setStatusBarText('');
     if updateURL = '' then
@@ -4480,7 +4345,7 @@ var
           n := NIL
         else
           n := f.node;
-        addFilesFromString(join(CRLF, filesToAddQ), n);
+        addFilesFromArray(filesToAddQ, n);
         filesToAddQ := NIL;
       end;
 
@@ -4518,30 +4383,37 @@ begin
   if not timer.enabled or quitting or lockTimerevent then
     exit;
   lockTimerevent := TRUE;
-try
-  // idk how it can be, but sometimes this now() call causes an AV http://www.rejetto.com/forum/index.php?topic=6371.msg1038634#msg1038634
-  try now_:=now()
-  except now_:=0 end;
-  if now_ = 0 then exit;
-
-  inc(clock);
-  if every(1) then everyTenth();
-  if every(10*60*10) then
-    every10minutes();
-  if every(60*10) then
-    everyMinute();
-  if every(10*10) then
-    every10sec();
-  if every(10) then
-    everySec();
-  if every(STATUSBAR_REFRESH) then
-    updateSbar();
-  if every(graph.rate) then
-    begin
-     if recalculateGraph() then
-       graphBoxPaint(NIL);
+  try
+    // idk how it can be, but sometimes this now() call causes an AV http://www.rejetto.com/forum/index.php?topic=6371.msg1038634#msg1038634
+    try
+      now_ := now()
+     except
+      now_ := 0
     end;
-finally lockTimerevent:=FALSE end;
+    if now_ = 0 then
+      exit;
+
+    inc(clock);
+    if every(1) then
+      everyTenth();
+    if every(10*60*10) then
+      every10minutes();
+    if every(60*10) then
+      everyMinute();
+    if every(10*10) then
+      every10sec();
+    if every(10) then
+      everySec();
+    if every(STATUSBAR_REFRESH) then
+      updateSbar();
+    if every(graph.rate) then
+      begin
+       if recalculateGraph() then
+         graphBoxPaint(NIL);
+      end;
+   finally
+    lockTimerevent := FALSE
+  end;
 end; // timerEvent
 
 procedure Tmainfrm.updateSbar();
@@ -4668,10 +4540,20 @@ begin
   while IPaddress1.Items[INDEX_FOR_URL].Caption <> '-' do
     IPaddress1.delete(INDEX_FOR_URL);
   // fill 'IP address' menu
-  a := getPossibleAddresses();
-  for i:=0 to length(a)-1 do
-    mainfrm.IPaddress1.Insert(INDEX_FOR_URL,
-      newItem(a[i], 0, a[i]=defaultIP, TRUE, ipmenuclick, 0, '') );
+  try
+    a := getPossibleAddresses();
+    for i:=0 to length(a)-1 do
+      mainfrm.IPaddress1.Insert(INDEX_FOR_URL,
+        newItem(a[i], 0, a[i]=defaultIP, TRUE, ipmenuclick, 0, '') );
+   except
+    on e:Exception do
+      begin
+      mainfrm.IPaddress1.Insert(INDEX_FOR_URL,
+        newItem(copy(e.Message, 1, 30), 0, false, False, NIL, 0, '') );
+      mainfrm.IPaddress1.Insert(INDEX_FOR_URL,
+        newItem(msg_err_get_ips, 0, false, False, NIL, 0, '') );
+      end;
+  end;
 
  ////////////////// Accept Menu /////////////////////////////
   delimIdx := AddrDelim.MenuIndex;
@@ -4680,18 +4562,34 @@ begin
     Acceptconnectionson1.delete(delimIdx+1);
 
  {$IFDEF USE_IPv6}
- // IPv6
-  AnyaddressV6.checked := listenOn = '[*]';
-  a6 := getLocalIPs(sfIPv6);
-//  a6 := listToArray(localIPlist(sfIPv6));
-  addUniqueString('::1', a6);
-  if length(a6) > 0 then
-   for i:=0 to length(a6)-1 do
-    Acceptconnectionson1.Insert(delimIdx+1,
-      newItem( '[' + a6[i] + ']', 0,
-              ((a6[i]=listenOn)or (('[' + a6[i] + ']') = listenOn)),
-              TRUE, acceptOnMenuclick, 0, '') );
+  if useIPv6 then
+    begin
+     // IPv6
+      AnyaddressV6.checked := listenOn = '[*]';
+      try
+        a6 := getLocalIPs(sfIPv6);
+      //  a6 := listToArray(localIPlist(sfIPv6));
+        addUniqueString('::1', a6);
+        if length(a6) > 0 then
+         for i:=0 to length(a6)-1 do
+          Acceptconnectionson1.Insert(delimIdx+1,
+            newItem( '[' + a6[i] + ']', 0,
+                    ((a6[i]=listenOn)or (('[' + a6[i] + ']') = listenOn)),
+                    TRUE, acceptOnMenuclick, 0, '') );
+       except
+        on e:Exception do
+          begin
+          Acceptconnectionson1.Insert(delimIdx+1,
+            newItem(copy(e.Message, 1, 30), 0, false, False, NIL, 0, '') );
+          Acceptconnectionson1.Insert(delimIdx+1,
+            newItem(msg_err_get_ipv6, 0, false, False, NIL, 0, '') );
+          end;
+      end;
+    end
+   else
+  {.$ELSE}
  {$ENDIF USE_IPv6}
+    AnyaddressV6.visible := False;
   //IPv4
   Anyaddress1.checked := listenOn = '';
   a4 := getLocalIPs({$IFDEF USE_IPv6}sfIPv4{$ENDIF USE_IPv6});
@@ -4881,6 +4779,134 @@ begin
 end;
 
 // returns the last file added
+function Tmainfrm.addFilesFromArray(files: TStringDynArray; under: TFileNode=NIL): Tfile;
+{$IFNDEF NO_GUI}
+var
+  folderKindFrm: TfolderKindFrm;
+
+  function selectFolderKind():integer;
+  begin
+    application.restore();
+    application.BringToFront();
+    Application.CreateForm(TfolderKindFrm, folderKindFrm);
+    result:=folderKindFrm.ShowModal();
+    folderKindFrm.Free;
+  end; // selectFolderKind
+{$ENDIF NO_GUI}
+
+const
+  MAX_DUPE = 50;
+var
+  f: Tfile;
+//  files: String;
+  I: Integer;
+  kind, s, fn: string;
+  doubles: TStringDynArray;
+  res: integer;
+  upload, skipComment: boolean;
+begin
+  result := NIL;
+  if Length(files) = 0 then
+    exit;
+  upload := FALSE;
+  if Length(files) = 1 then
+    begin
+      fn := trim(files[0]); // this let me treat 'files' as a simple filename, not caring of the trailing CRLF
+
+      // suggest template installation
+      if (lowerCase(extractFileExt(fn)) = '.tpl')
+      and (msgDlg(MSG_INSTALL_TPL, MB_YESNO) = MRYES) then
+       begin
+        setNewTplFile(fn);
+        exit;
+       end;
+
+      upload := (ipos('upload', extractFilename(fn)) > 0)
+            and (msgDlg(MSG_FOLDER_UPLOAD, MB_YESNO) = MRYES);
+    end;
+  // warn upon double filenames
+  doubles := NIL;
+  for I := Low(files) to High(files) do
+  if files[I] > '' then
+   begin
+    fn := files[I];
+    // we must resolve links here, or we may miss duplicates
+    if isExtension(fn, '.lnk') or fileExists(fn+'\target.lnk') then  // mod by mars
+      fn := resolveLnk(fn);
+
+    if (length(fn) = 3) and (fn[2] = ':') then
+      fn := fn[1]+fn[2] // unit root folder
+     else
+      fn := ExtractFileName(fn);
+    if fileSrv.existsNodeWithName(fn, under) then
+      if addString(fn, doubles) > MAX_DUPE then
+        break;
+   end;
+  if assigned(doubles) then
+   begin
+    filesBox.Repaint();
+    res := length(doubles);
+    s := if_(res > MAX_DUPE, intToStr(MAX_DUPE)+'+', intToStr(res));
+    s := format(MSG_ITEM_EXISTS, [s, join(', ',doubles)]);
+    if msgDlg(s, MB_ICONWARNING+MB_YESNO) <> IDYES then
+      exit;
+   end;
+
+  f := NIL;
+  skipComment := Length(files) <> 1;
+  kind := if_(upload, 'real', addFolderDefault);
+  addingItemsCounter := 0;
+  try
+    i := 0;
+    repeat
+      fn := files[i];
+      if fn = '' then
+        continue;
+      f := Tfile.create(fileSrv, fn);
+      if f.isFolder() then
+       begin
+        if kind = '' then
+         begin // we didn't decide if real or virtual yet
+           res := selectFolderKind();
+
+         {$IFNDEF FPC}
+          if isAbortResult(res) then
+            begin
+            f.free;
+            exit;
+            end;
+         {$ENDIF FPC}
+          kind := if_(res = mrYes, 'virtual', 'real');
+         end;
+
+        if kind = 'virtual' then
+          f.setAttr(FA_VIRTUAL, True)
+       end;
+
+      f.lock();
+      try
+        f.name := fileSrv.getUniqueNodeName(f.name, under);
+        fileSrv.addFileGUI(f, under, skipComment);
+       finally
+        f.unlock();
+      end;
+     inc(i);
+    until (i > High(files)) or fileSrv.stopAddingItems;
+   finally
+     addingItemsCounter:=-1
+  end;
+
+  if upload then
+   begin
+    addUniqueString(USER_ANYONE, f.accounts[FA_UPLOAD]);
+    sortArray(f.accounts[FA_UPLOAD]);
+   end;
+  if assigned(f) and autocopyURLonadditionChk.checked then
+    setClip(fileSrv.fullURL(f));
+  result := f;
+end; // addFilesFromArray
+
+// returns the last file added
 function Tmainfrm.addFilesFromString(files: String; under: TFileNode=NIL): Tfile;
 var
   folderKindFrm: TfolderKindFrm;
@@ -5005,24 +5031,29 @@ end; // addFilesFromString
 procedure Tmainfrm.addDropFiles(hnd: Thandle; under: TFileNode);
 var
   i, n: integer;
-  buffer: array [0..2000] of char;
-  files: string;
+  buffer: array [0..2000] of WideChar;
+//  files: string;
+  files: TStringDynArray;
+  fn: String;
 begin
   if hnd = 0 then
     exit;
   GlobalLock(hnd);
   n := DragQueryFile(hnd,cardinal(-1),NIL,0);
-  files := '';
+//  files := '';
+  SetLength(files, n);
   buffer := '';
   for i:=0 to n-1 do
     begin
-      DragQueryFile(hnd, i, @buffer, sizeof(buffer));
-      files := files+buffer+CRLF;
+      DragQueryFileW(hnd, i, @buffer, sizeof(buffer));
+      fn := TRIM(StrPas(buffer));
+//      files := files+buffer+CRLF;
+      files[i] := fn;
     end;
   //DragFinish(hnd);  // this call seems to cause instability, don't know why
   GlobalUnlock(hnd);
 
-  addFilesFromString(files, under);
+  addFilesFromArray(files, under);
 end; // addDropFiles
 
 procedure Tmainfrm.WMDropFiles(var msg: TWMDropFiles);
@@ -5170,7 +5201,7 @@ procedure TmainFrm.appEventsShowHint(var HintStr: String; var CanShow: Boolean; 
       perm(FA_UPLOAD, MSG_VFS_UPLOAD);
     perm(FA_DELETE, MSG_VFS_DELETE);
 
-    s := reduce(f.getDynamicComment(mainfrm.getLP));
+    s := reduce(f.getDynamicComment(fileSrv.LP));
     if (s > '') and (f.comment = '') then
       s := s+MSG_VFS_EXTERNAL;
     if s > '' then
@@ -5472,7 +5503,7 @@ var
     selected: boolean;
     r1: Trect;
     x: integer;
-    colors:array [boolean] of Tcolor;
+    colors: array [boolean] of Tcolor;
   begin
     if (total <= 0) or (lowerbound >= upperbound) then
       exit;
@@ -5600,8 +5631,16 @@ begin
   if data = NIL then
     exit;
   s := nonEmptyConcat('', data.usr, '@')+data.address+':'+data.conn.port;
+ {$IFDEF SHOW_GEO_BY_IP}
+  if TConnDataGui(data.guiData).countryNum > 0 then
+    s := '['+CountryCodes[TConnDataGui(data.guiData).countryNum] + '] ' + s;
+ {$ENDIF SHOW_GEO_BY_IP}
+  Changed := false;
   if item.caption <> s then
-    item.caption := s;
+    begin
+      item.caption := s;
+      Changed := True;
+    end;
   while item.subitems.count < 5 do
     item.subitems.add('');
 
@@ -5622,6 +5661,7 @@ begin
   if img <> item.imageIndex then
     begin
       item.imageIndex := img;
+      Changed := True;
     end;
 
   changeSubItem(0, getFname());
@@ -5682,7 +5722,7 @@ end; // trayEvent
 procedure TmainFrm.trayiconforeachdownload1Click(Sender: TObject);
 begin trayfordownloadChk.Checked:=FALSE end;
 
-procedure Tmainfrm.downloadtrayEvent(sender: Tobject; ev: TtrayEvent);
+procedure TmainFrm.downloadTrayEvent(sender: Tobject; ev: TtrayEvent);
 var
   i: integer;
 begin
@@ -5871,13 +5911,13 @@ var
   src, dst: Tfile;
   i: integer;
 begin
-  scrollFilesBox:=-1;
+  scrollFilesBox := -1;
   if y < THRESHOLD then
-    scrollFilesBox:=SB_LINEUP;
+    scrollFilesBox := SB_LINEUP;
   if filesBox.Height-y < THRESHOLD then
-    scrollFilesBox:=SB_LINEDOWN;
+    scrollFilesBox := SB_LINEDOWN;
 
-  accept:=FALSE;
+  accept := FALSE;
   if sender <> source then
     exit; // only move files within filesBox
   dst := pointedFile(FALSE);
@@ -5933,12 +5973,19 @@ begin
  {$ENDIF FPC}
 end;
 
-procedure TmainFrm.onRefreshConn(conn: TconnData);
+procedure TmainFrm.onRefreshConn(conn: TconnDataMain);
 begin
   refreshConn(conn);
 end;
 
-procedure TmainFrm.refreshConn(conn: TconnData; checkProgress: Boolean = True);
+procedure TmainFrm.onSetupDownloadIcon(conn: TconnDataMain);
+begin
+  if Assigned(conn.guiData) then
+    TConnDataGui(conn.guiData).setupDownloadIcon(conn, Self.Handle, Self.downloadTrayEvent);
+end;
+
+
+procedure TmainFrm.refreshConn(conn: TconnDataMain; checkProgress: Boolean = True);
 var
   r: Trect;
   i: integer;
@@ -5958,7 +6005,6 @@ begin
 end; // refreshConn
 
 
-//function Tmainfrm.getVFS(node: TFileNode=NIL): RawByteString;
 function Tmainfrm.getFullVFS: RawByteString;
 var
   f: Tfile;
@@ -5971,9 +6017,8 @@ begin
   if f = NIL then
     exit;
   Result := f.getVFS;
-end; // getVFS
+end; // getFullVFS
 
-//function Tmainfrm.getVFSJZ(node: TFileNode=NIL): RawByteString;
 function Tmainfrm.getFullVFSJZ: RawByteString;
 var
   f: Tfile;
@@ -5986,7 +6031,7 @@ begin
   if f = NIL then
     exit('');
   Result := f.getVFSZ;
-end; // getVFSJZ
+end; // getFullVFSJZ
 
 procedure TmainFrm.Savefilesystem1Click(Sender: TObject);
 begin saveVFS() end;
@@ -6312,10 +6357,11 @@ end;
 
 procedure TmainFrm.Addfolder1Click(Sender: TObject);
 begin
-if selectFolder('', lastDialogFolder) then
-  begin
-  addFilesFromString(lastDialogFolder, filesBox.selected);
-  end;
+  if selectFolder('', lastDialogFolder) then
+   begin
+//    addFilesFromString(lastDialogFolder, filesBox.selected);
+    addFilesFromArray([lastDialogFolder], filesBox.selected);
+   end;
 end;
 
 procedure TmainFrm.graphSplitterMoved(Sender: TObject);
@@ -6371,8 +6417,12 @@ begin
   if f = NIL then
     exit;
   if f.hasRecursive([FA_HIDDEN, FA_HIDDENTREE], TRUE) then
-	  with sender.Canvas.Font do
-  	  style:=style+[fsItalic];
+    with sender.Canvas.Font do
+     style:=style + [fsItalic]
+   else
+    with sender.Canvas.Font do
+     style:=style - [fsItalic]
+          ;
   a := f.accounts[FA_ACCESS];
   onlyAnon := onlyString(USER_ANONYMOUS, a);
   node.stateIndex := RDUtils.ifThen((f.user > '') or (assigned(a) and not onlyAnon), ICON_LOCK, -1);
@@ -6468,7 +6518,7 @@ begin
   for i:=0 to length(recentFiles)-1 do
     loadrecentfiles1.Add(
       NewItem( '[&'+intToStr(i+1)+'] '+ExtractFileName(recentFiles[i]), 0, FALSE, TRUE, recentsClick, 0, 'recent') );
-  Loadrecentfiles1.visible:=Loadrecentfiles1.count>0;
+  Loadrecentfiles1.visible := Loadrecentfiles1.count>0;
 end; // updateRecentFilesMenu
 
 procedure Tmainfrm.loadVFS(fn: String);
@@ -6477,7 +6527,9 @@ var
   data2: RawByteString;
 
   function anyAutosavingFeatureEnabled():boolean;
-  begin  result:=(autosaveVFS.every > 0) or autosaveVFSchk.checked end;
+  begin
+    result:=(autosaveVFS.every > 0) or autosaveVFSchk.checked
+  end;
 
   function restoreBak(var dd: RawByteString): boolean;
   begin
@@ -6642,7 +6694,7 @@ end; // loadVFS
 
 procedure TmainFrm.logBoxChange(Sender: TObject);
 begin
-  logToolbar.visible:=not easyMode //and (logBox.Lines.count > 0)
+  logToolbar.visible := not easyMode //and (logBox.Lines.count > 0)
 end;
 
 procedure Tmainfrm.popupMainMenu();
@@ -6676,9 +6728,9 @@ end;
 procedure Tmainfrm.updateAlwaysOnTop();
 begin
   if alwaysOnTopchk.checked then
-    FormStyle:=fsStayOnTop
+    FormStyle := fsStayOnTop
    else
-    formStyle:=fsNormal
+    formStyle := fsNormal
 end; // updateAlwaysOnTop
 
 procedure TmainFrm.updateBtnClick(Sender: TObject);
@@ -6724,7 +6776,8 @@ begin
 
   if info = NIL then
    begin
-    msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
+//    msgDlg(MSG_COMM_ERROR, MB_ICONERROR);
+    MessageDlg(MSG_COMM_ERROR, TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], 0, tmsgdlgBtn.mbOK, 30);
     exit;
    end;
 
@@ -6757,18 +6810,29 @@ procedure Tmainfrm.setEasyMode(easy:boolean=TRUE);
 const
   ICO :array [boolean] of integer = (ICON_EXPERT, ICON_EASY);
 begin
-easyMode:=easy;
-switchMode.caption:=ifThen(easyMode, MSG_SW2EXPERT, MSG_SW2EASY);
-//switchMode.imageIndex:=ICO[not easyMode];  disabled because it's ugly, it uses the same icon as the next menu item (accounts)
-modeBtn.caption:=ifThen(easyMode, MSG_ARE_EASY, MSG_ARE_EXPERT);
-modeBtn.imageIndex:=ICO[easyMode];
-if not easyMode or graphInEasyMode then showGraph()
-else hideGraph();
-optionsFrm.mimePage.tabVisible:=not easyMode;
-optionsFrm.accountsPage.tabVisible:=not easyMode;
-optionsFrm.a2nPage.tabVisible:=not easyMode;
-logBoxChange(NIL);
-updateSbar();
+  easyMode:=easy;
+  switchMode.caption:=ifThen(easyMode, MSG_SW2EXPERT, MSG_SW2EASY);
+  //switchMode.imageIndex:=ICO[not easyMode];  disabled because it's ugly, it uses the same icon as the next menu item (accounts)
+  modeBtn.caption:=ifThen(easyMode, MSG_ARE_EASY, MSG_ARE_EXPERT);
+  modeBtn.imageIndex:=ICO[easyMode];
+  if not easyMode or graphInEasyMode then
+    showGraph()
+   else
+    hideGraph();
+ {$IFNDEF NO_GUI}
+  optionsFrm.mimePage.tabVisible:=not easyMode;
+  optionsFrm.accountsPage.tabVisible:=not easyMode;
+  optionsFrm.a2nPage.tabVisible:=not easyMode;
+  logBoxChange(NIL);
+ {$ENDIF NO_GUI}
+  updateSbar();
+  if easy then
+    caption := format('HFS ~ HTTP File Server %s',
+      [srvConst.SRV_VERSION])
+   else
+    Self.caption := format('HFS ~ HTTP File Server %s%sBuild %s',
+      [srvConst.VERSION, stringOfChar(' ',80), VERSION_BUILD]);
+
 end; // switchEasyMode
 
 procedure TmainFrm.Rename1Click(Sender: TObject);
@@ -6806,17 +6870,18 @@ end;
 
 procedure TmainFrm.hideGraph();
 begin
-graphSplitter.hide();
-graphBox.hide();
-graphInEasyMode:=FALSE;
+  graphSplitter.hide();
+  graphBox.hide();
+  graphInEasyMode := FALSE;
 end; // hideGraph
 
 procedure TmainFrm.showGraph();
 begin
-graphSplitter.show();
-graphBox.show();
-graphBox.Height:=graph.size;
-if easyMode then graphInEasyMode:=TRUE;
+  graphSplitter.show();
+  graphBox.show();
+  graphBox.Height:=graph.size;
+  if easyMode then
+    graphInEasyMode:=TRUE;
 end; // showGraph
 
 procedure TmainFrm.Showbandwidthgraph1Click(Sender: TObject);
@@ -6824,7 +6889,7 @@ begin showGraph() end;
 
 procedure TmainFrm.Pause1Click(Sender: TObject);
 var
-  cd: TconnData;
+  cd: TconnDataMain;
 begin
   cd := selectedConnection();
   if cd = NIL then
@@ -6895,8 +6960,9 @@ begin
   delete(addr, pos('&',addr), 1);
 
   s := '';
-  for i:=0 to filesBox.SelectionCount-1 do
-    s:=s+fileSrv.fullURL(nodeTofile(filesBox.Selections[i]), addr)+CRLF;
+  if filesBox.SelectionCount > 0 then
+    for i:=0 to filesBox.SelectionCount-1 do
+      s:=s+fileSrv.fullURL(nodeTofile(filesBox.Selections[i]), addr)+CRLF;
 setLength(s, length(s)-2);
 
 setClip(s);
@@ -7010,7 +7076,7 @@ end; // saveVFS
 
 procedure TmainFrm.filesBoxAddition(Sender: TObject; Node: TFileNode);
 begin
-  VFSmodified:=TRUE;
+  VFSmodified := TRUE;
 //  if Node.Data <> NIL then
 //    TFile(Node.Data).SyncNode(Node);
 end;
@@ -7119,7 +7185,7 @@ begin
     for i:=0 to filesBox.SelectionCount-1 do
       with nodeToFile(filesBox.Selections[i]) do
         if FA_LINK in flags then
-          resource:=s;
+          resource := s;
   VFSmodified := TRUE;
 end;
 
@@ -7296,6 +7362,8 @@ begin
   //SetLogTheme(True, True);
   //FIsBrowserReady := True;
 
+  FLogLock := TCriticalSection.Create;
+
   screen.onActiveFormChange := wrapInputQuery;
   easyMode := TRUE;
 
@@ -7306,7 +7374,7 @@ begin
   listfileswithHiddenAttributeChk.OnClick := onLoadPrefsChange;
   loadSingleCommentsChk.OnClick := onLoadPrefsChange;
   fingerprintsChk.OnClick := onLoadPrefsChange;
-  recursiveListingChk.OnClick := onLoadPrefsChange;
+//  recursiveListingChk.OnClick := onLoadPrefsChange;
   hideProtectedItemsChk.OnClick := onLoadPrefsChange;
   oemForIonChk.OnClick := onLoadPrefsChange;
   deletePartialUploadsChk.OnClick := onLoadPrefsChange;
@@ -7318,11 +7386,11 @@ begin
   httpsUrlsChk.OnClick := onShowPrefsChange;
   foldersBeforeChk.OnClick := onShowPrefsChange;
   linksBeforeChk.OnClick := onShowPrefsChange;
-  noPortInUrlChk.OnClick := onShowPrefsChange;
+//  noPortInUrlChk.OnClick := onShowPrefsChange;
   encodenonasciiChk.OnClick := onShowPrefsChange;
   encodeSpacesChk.OnClick := onShowPrefsChange;
   compressedbrowsingChk.OnClick := onShowPrefsChange;
-  CompressZIPstreamsChk.OnClick := onShowPrefsChange;
+  //CompressZIPstreamsChk.OnClick := onShowPrefsChange;
   sendHFSidentifierChk.OnClick := onShowPrefsChange;
   freeLoginChk.OnClick := onShowPrefsChange;
   stopSpidersChk.OnClick := onShowPrefsChange;
@@ -7331,7 +7399,11 @@ begin
   enableNoDefaultChk.OnClick := onShowPrefsChange;
   DMbrowserTplChk.OnClick := onShowPrefsChange;
   recursiveListingChk.OnClick := onShowPrefsChange;
+ {$IFDEF SERVE_TAR}
   oemTarChk.OnClick := onShowPrefsChange;
+ {$ELSE !SERVE_TAR}
+  oemTarChk.Visible := False;
+ {$ENDIF SERVE_TAR}
   noContentdispositionChk.OnClick := onShowPrefsChange;
   preventStandbyChk.OnClick := onShowPrefsChange;
   disableMacrosNonLocalIPChk.OnClick := onShowPrefsChange;
@@ -7357,16 +7429,47 @@ begin
   dumpTrafficChk.OnClick := onLogPrefsChange;
   macrosLogChk.OnClick := onLogPrefsChange;
 
+  LogdateChk.OnClick := onLogPrefsChange;
+  LogtimeChk.OnClick := onLogPrefsChange;
+  logOnVideoChk.OnClick := onLogPrefsChange;
+  tabOnLogFileChk.OnClick := onLogPrefsChange;
+
+end;
+
+procedure TmainFrm.FormDestroy(Sender: TObject);
+var
+  t: TFileServer;
+begin
+  if Assigned(fileSrv) then
+    begin
+      t := fileSrv;
+      fileSrv := NIL;
+      t.free;
+    end;
+  logLib.fOnAdd2Log := NIL;
+  FreeAndNil(FLogLock);
 end;
 
 procedure TmainFrm.onLoadPrefsChange(Sender: TObject);
 begin
+  if Sender is TMenuItem then
+    begin
+      if (Sender as TMenuItem).Hint > '' then
+        fileSrv.prefs.addPrefBool((Sender as TMenuItem).Hint, (Sender as TMenuItem).Checked)
+    end;
+
   if Assigned(fileSrv) then
     fileSrv.syncLP;
 end;
 
 procedure TmainFrm.onShowPrefsChange(Sender: TObject);
 begin
+  if Sender is TMenuItem then
+    begin
+      if (Sender as TMenuItem).Hint > '' then
+        fileSrv.prefs.addPrefBool((Sender as TMenuItem).Hint, (Sender as TMenuItem).Checked)
+    end;
+
   if Assigned(fileSrv) then
     fileSrv.syncSP;
 end;
@@ -7403,18 +7506,18 @@ var
 begin
   repaintTray(fileSrv);
   n := fileSrv.getRootNode;
-while assigned(n) do
+  while assigned(n) do
   begin
-  nodeToFile(n).DLcount:=0;
-  n := n.getNext();
+    nodeToFile(n).DLcount:=0;
+    n := n.getNext();
   end;
-VFSmodified:=TRUE;
-autoupdatedFiles.clear();
+  VFSmodified:=TRUE;
+  autoupdatedFiles.clear();
 end;
 
 procedure TmainFrm.persistentconnectionsChkClick(Sender: TObject);
 begin
-  fileSrv.htSrv.persistentConnections:=persistentconnectionsChk.Checked;
+  fileSrv.htSrv.persistentConnections := persistentconnectionsChk.Checked;
   if not fileSrv.htSrv.persistentConnections then
     Kickidleconnections1Click(NIL);
 end;
@@ -7644,11 +7747,12 @@ end;
 
 procedure Tmainfrm.setStatusBarText(const s: String; lastFor: Integer);
 begin
-  with sbar.panels[sbar.panels.count-1] do
-   begin
-    alignment := taLeftJustify;
-    text:=s;
-   end;
+  if sbar.panels.Count > 0 then
+    with sbar.panels[sbar.panels.count-1] do
+      begin
+        alignment := taLeftJustify;
+        text := s;
+      end;
   sbarTextTimeout := now()+lastFor/SECONDS;
 end;
 
@@ -7701,8 +7805,8 @@ begin
   if (i = sbarIdxs.totalIn) or (i = sbarIdxs.totalOut) then
     if msgDlg(MSG_RESET_TOT, MB_YESNO) = IDYES then
       begin
-       outTotalOfs:=-srv.bytesSent;
-       inTotalOfs:=-srv.bytesReceived;
+       outTotalOfs:=-fileSrv.getBytes(ST_OUTCOME);
+       inTotalOfs:=-fileSrv.getBytes(ST_INCOME);
       end;
   if i = sbarIdxs.banStatus then BannedIPaddresses1Click(NIL);
   if i = sbarIdxs.customTpl then Edit1Click(NIL);
@@ -7719,30 +7823,31 @@ if button = mbRight then
   sbarDblClick(sender);
 end;
 
-procedure forceDynDNSupdate(url:string='');
+procedure forceDynDNSupdate(url: String='');
 begin
-dyndns.url:=url;
-if url = '' then exit; 
+  dyndns.url := url;
+  if url = '' then
+    exit;
 // this function is called when setting any dyndns service.
 // calling it from somewhere else may make the following test unsuitable
-if mainfrm.findExtOnStartupChk.checked then
-  begin
-  mainfrm.findExtOnStartupChk.checked:=FALSE;
-  msgDlg(MSG_DISAB_FIND_EXT, MB_ICONINFORMATION);
-  exit;
-  end;
-dyndns.active:=TRUE;
-dyndns.lastIP:='';
-externalIP:='';
+  if mainfrm.findExtOnStartupChk.checked then
+   begin
+    mainfrm.findExtOnStartupChk.checked := FALSE;
+    msgDlg(MSG_DISAB_FIND_EXT, MB_ICONINFORMATION);
+    exit;
+   end;
+  dyndns.active := TRUE;
+  dyndns.lastIP := '';
+  externalIP := '';
 end; // forceDynDNSupdate
 
 procedure TmainFrm.Custom2Click(Sender: TObject);
 var
   s: string;
 begin
-s:=dyndns.url;
-if inputQuery(MSG_ENT_URL, MSG_ENT_URL_LONG, s) then
-  forceDynDNSupdate(s);
+  s := dyndns.url;
+  if inputQuery(MSG_ENT_URL, MSG_ENT_URL_LONG, s) then
+    forceDynDNSupdate(s);
 end;
 
 procedure TmainFrm.Defaultpointtoaddfiles1Click(Sender: TObject);
@@ -7789,9 +7894,10 @@ end; // finalizeDynDNS
 
 procedure TmainFrm.NoIPtemplate1Click(Sender: TObject);
 begin
-if not dynDNSinputUserPwd() or not dynDNSinputHost() then exit;
-forceDynDNSupdate('http://'+dyndns.user+':'+dyndns.pwd+'@dynupdate.no-ip.com/nic/update?hostname='+dyndns.host);
-finalizeDynDNS();
+  if not dynDNSinputUserPwd() or not dynDNSinputHost() then
+    exit;
+  forceDynDNSupdate('http://'+dyndns.user+':'+dyndns.pwd+'@dynupdate.no-ip.com/nic/update?hostname='+dyndns.host);
+  finalizeDynDNS();
 end;
 
 procedure TmainFrm.CJBtemplate1Click(Sender: TObject);
@@ -8101,6 +8207,8 @@ begin
     mainfrm.updateUrlBox()
    else
     noPortInUrlChk.Checked:=FALSE;
+
+  onShowPrefsChange(Sender);
 end;
 
 function getTplEditor():string;
@@ -8186,7 +8294,7 @@ var
   bakShellMenuText: string;
 procedure TmainFrm.menuPopup(Sender: TObject);
 
-  procedure showSetting(mi:Tmenuitem; v:integer; unit_:string); overload;
+  procedure showSetting(mi:Tmenuitem; v:integer; const unit_:string); overload;
   begin
     mi.caption:=getTill('...', mi.caption, TRUE)+if_(v>0, format('       (%d %s)', [v, unit_]))
   end;
@@ -8260,81 +8368,87 @@ begin
   toregistryallusers1.Default := saveMode=SM_SYSTEM;
 
   Reverttopreviousversion1.Visible := fileExists(exePath+PREVIOUS_VERSION);
-  Saveoptions1.visible:=not easyMode;
-testerUpdatesChk.visible:=not easyMode;
-preventStandbyChk.visible:=not easyMode;
-searchbetteripChk.visible:=not easyMode;
-Addfiles2.visible:=easyMode;
-Addfolder2.visible:=easyMode;
-freeLoginChk.visible:=not easyMode;
-Speedlimitforsingleaddress1.visible:=not easyMode;
-quitWithoutAskingToSaveChk.visible:=not easyMode;
-backupSavingChk.visible:=not easyMode;
-Defaultsorting1.visible:=not easyMode;
-sendHFSidentifierChk.visible:=not easyMode;
-URLencoding1.visible:=not easyMode;
-persistentconnectionsChk.visible:=not easyMode;
-DMbrowserTplChk.visible:=not easyMode;
-MIMEtypes1.visible:=not easyMode;
-compressedbrowsingChk.visible:=not easyMode;
-modalOptionsChk.visible:=not easyMode;
-Allowedreferer1.visible:=not easyMode;
-Fingerprints1.visible:=not easyMode;
-findExtOnStartupChk.visible:=not easyMode;
-listfileswithsystemattributeChk.visible:=not easyMode;
-Custom1.visible:=not easyMode;
-noPortInUrlChk.visible:=not easyMode;
-DynamicDNSupdater1.visible:=not easyMode;
-only1instanceChk.visible:=not easyMode;
-Flashtaskbutton1.visible:=not easyMode;
-HintsfornewcomersChk.visible:=not easyMode;
-Graphrefreshrate1.visible:=not easyMode;
-foldersbeforeChk.visible:=not easyMode;
-listfileswithhiddenattributeChk.visible:=not easyMode;
-saveTotalsChk.visible:=not easyMode;
-trayfordownloadChk.visible:=not easyMode;
-Accounts1.visible:=not easyMode;
-VirtualFileSystem1.visible:=not easyMode;
-Pausestreaming1.visible:=not easyMode;
-Maxconnections1.visible:=not easyMode;
-Maxconnectionsfromsingleaddress1.visible:=not easyMode;
-maxIPsDLing1.visible:=not easyMode;
-maxIPs1.visible:=not easyMode;
-MaxDLsIP1.visible:=not easyMode;
-Connectionsinactivitytimeout1.visible:=not easyMode;
-minimumDiskSpace1.visible:=not easyMode;
-HTMLtemplate1.visible:=not easyMode;
-shellcontextmenu1.visible:=not easyMode;
-useCommentAsRealmChk.visible:=not easyMode;
-openDirectlyInBrowser1.visible:=not easyMode;
-keepBakUpdatingChk.visible:=not easyMode;
-loginRealm1.visible:=not easyMode;
-DumprequestsChk.visible:=not easyMode;
-logBytesreceivedChk.visible:=not easyMode;
-logBytessentChk.visible:=not easyMode;
-logconnectionsChk.visible:=not easyMode;
-logDisconnectionsChk.visible:=not easyMode;
-autoCommentChk.visible:=not easyMode;
-traymessage1.visible:=not easyMode;
-showmaintrayiconChk.visible:=not easyMode;
-numberOfLoggedHits1.visible:=not easyMode;
-Showcustomizedoptions1.visible:=not easyMode;
-enableNoDefaultChk.visible:=not easyMode;
-browseUsingLocalhostChk.visible:=not easyMode;
-useISOdateChk.visible:=not easyMode;
-Addicons1.visible:=not easyMode;
-Acceptconnectionson1.visible:=not easyMode;
-numberFilesOnUploadChk.visible:=not easyMode;
-Renamepartialuploads1.visible:=not easyMode;
-deletePartialUploadsChk.visible:=not easyMode;
-updateAutomaticallyChk.visible:=not easyMode;
-stopSpidersChk.visible:=not easyMode;
-linksBeforeChk.visible:=not easyMode;
-Debug1.visible:=not easyMode;
-delayUpdateChk.visible:=not easyMode;
+  setVisible([
+    Addfiles2,
+    Addfolder2
+    ], easyMode);
+
+  setVisible([
+    Saveoptions1,
+    testerUpdatesChk,
+    preventStandbyChk,
+    searchbetteripChk,
+    freeLoginChk,
+    Speedlimitforsingleaddress1,
+    quitWithoutAskingToSaveChk,
+    backupSavingChk,
+    Defaultsorting1,
+    sendHFSidentifierChk,
+    URLencoding1,
+    persistentconnectionsChk,
+    DMbrowserTplChk,
+    MIMEtypes1,
+    compressedbrowsingChk,
+    //CompressZIPstreamsChk,
+    modalOptionsChk,
+    Allowedreferer1,
+    Fingerprints1,
+    findExtOnStartupChk,
+    listfileswithsystemattributeChk,
+    Custom1,
+    noPortInUrlChk,
+    DynamicDNSupdater1,
+    only1instanceChk,
+    Flashtaskbutton1,
+    HintsfornewcomersChk,
+    Graphrefreshrate1,
+    foldersbeforeChk,
+    listfileswithhiddenattributeChk,
+    saveTotalsChk,
+    trayfordownloadChk,
+    Accounts1,
+    VirtualFileSystem1,
+    Pausestreaming1,
+    Maxconnections1,
+    Maxconnectionsfromsingleaddress1,
+    maxIPsDLing1,
+    maxIPs1,
+    MaxDLsIP1,
+    Connectionsinactivitytimeout1,
+    minimumDiskSpace1,
+    HTMLtemplate1,
+    shellcontextmenu1,
+    useCommentAsRealmChk,
+    openDirectlyInBrowser1,
+    keepBakUpdatingChk,
+    loginRealm1,
+    DumprequestsChk,
+    logBytesreceivedChk,
+    logBytessentChk,
+    logconnectionsChk,
+    logDisconnectionsChk,
+    autoCommentChk,
+    traymessage1,
+    showmaintrayiconChk,
+    numberOfLoggedHits1,
+    Showcustomizedoptions1,
+    enableNoDefaultChk,
+    browseUsingLocalhostChk,
+    useISOdateChk,
+    Addicons1,
+    Acceptconnectionson1,
+    numberFilesOnUploadChk,
+    Renamepartialuploads1,
+    deletePartialUploadsChk,
+    updateAutomaticallyChk,
+    stopSpidersChk,
+    linksBeforeChk,
+    Debug1,
+    delayUpdateChk
+    ], not easyMode);
 end;
 
-function paramsAsArray():TStringDynArray;
+function paramsAsArray(): TStringDynArray;
 var
   i: integer;
 begin
@@ -8439,14 +8553,14 @@ begin
   trayMsg := MSG_TRAY_DEF;
 
   autoDownloadLibs := utilLib.httpsCanWork;
-  startingImagesCount:= IconsDM.images.count;
-  //srv.onEvent:=httpEvent;
-  tray_ico:=Ticon.create();
-  tray:=TmyTrayicon.create(self.Handle);
+  startingImagesCount := IconsDM.images.count;
+  //srv.onEvent := httpEvent;
+  tray_ico := Ticon.create();
+  tray := TmyTrayicon.create(self.Handle);
   DragAcceptFiles(handle, true);
-  caption:=format('HFS ~ HTTP File Server %s%sBuild %s',
+  caption := format('HFS ~ HTTP File Server %s%sBuild %s',
     [srvConst.VERSION, stringOfChar(' ',80), VERSION_BUILD]);
-  application.Title:=format('HFS %s (%s)', [srvConst.VERSION, VERSION_BUILD]);
+  application.Title := format('HFS %s (%s)', [srvConst.VERSION, VERSION_BUILD]);
   setSpeedLimit(-1);
   setSpeedLimitIP(-1);
   setGraphRate(10);
@@ -8460,19 +8574,36 @@ begin
   setAutosave(autosaveVFS, 0);
   setAutoFingerprint(0);
   setLogToolbar(FALSE);
+  userIcsBuffer := -1;
+  userSocketBuffer := -1;
+
 
   autosaveVFS.minimum:=5;
-  autosaveVFS.menu:=autosaveevery1;
+  autosaveVFS.menu := autosaveevery1;
 
-  params:=paramsAsArray();
+  params := paramsAsArray();
   processParams_before(params, 'i4');
+ {$IFDEF SHOW_GEO_BY_IP}
+  geoip := NIL;
+  try
+    if FileExists('geoip_db.dat.gz') then
+      begin
+       geoip := TGeoIP.Create('geoip_db.dat.gz', True);
+      end;
+
+    if not Assigned(geoip) and FileExists('geoip_db.dat') then
+      geoip := TGeoIP.Create('geoip_db.dat');
+   except
+    geoip := NIL;
+  end;
+ {$ENDIF SHOW_GEO_BY_IP}
+  logLib.fOnAdd2Log := Self.add2log; // utilLib.add2Log;
 /////////////////////////////////////////////// Here creatinng main server part //////////////////////////////////////////////
-  fileSrv := TFileServer.Create(Self.filesBox, //scriptLib.tryApplyMacrosAndSymbols,
-                                getSP, getLP, getLogP,
+  fileSrv := TFileServer.Create(Self.filesBox,
                                 onAddingItemOnServer,
                                 setStatusBarText);
   fileSrv.onIPsEverChanged := onIPsEverChanged;
-  fileSrv.OnSetupDownloadIcon := setupDownloadIcon;
+  fileSrv.OnSetupDownloadIcon := onSetupDownloadIcon;
   fileSrv.OnFlash := flash;
   fileSrv.OnStatusChanged := onServerStatusChanged;
   fileSrv.OnRefreshConn := onRefreshConn;
@@ -8481,7 +8612,7 @@ begin
   fileSrv.onUpdateTray := onUpdateTray;
   fileSrv.OnBeforeAddFile := OnBeforeAddFile;
   fileSrv.OnAfterAddFile := OnAfterAddFile;
-  fileSrv.setAdd2LogFunc(utilLib.add2Log);
+//  fileSrv.setAdd2LogFunc(utilLib.add2Log);
   fileSrv.registerMacroFunc('set item', 2, setItemMacro);
   fileSrv.registerMacroFunc('delete item', 1, deleteItemMacro);
   fileSrv.registerMacroFunc('notify', 0, notifyMacro);
@@ -8743,16 +8874,22 @@ var
   s: string;
   i: integer;
 begin
-if maxIPs > 0 then s:=intToStr(maxIPs)
-else s:='';
-if inputquery(MSG_SET_LIMIT, MSG_MAX_SIM_ADDR+#13+MSG_EMPTY_NO_LIMIT, s) then
-	try setMaxIPs(strToUInt(s))
-  except msgDlg(MSG_INVALID_VALUE, MB_ICONERROR)
-  end;
-if maxIPs = 0 then exit;
-i:=countIPs(srv);
-if i > maxIPs then
-  msgDlg(format(MSG_NUM_ADDR, [i]), MB_ICONWARNING);
+  if maxIPs > 0 then
+    s:=intToStr(maxIPs)
+   else
+    s:='';
+  if inputquery(MSG_SET_LIMIT, MSG_MAX_SIM_ADDR+#13+MSG_EMPTY_NO_LIMIT, s) then
+    try
+      setMaxIPs(strToUInt(s))
+     except
+      msgDlg(MSG_INVALID_VALUE, MB_ICONERROR)
+    end;
+  if maxIPs = 0 then
+    exit;
+
+  i := fileSrv.countIPs();
+  if i > maxIPs then
+    msgDlg(format(MSG_NUM_ADDR, [i]), MB_ICONWARNING);
 end;
 
 procedure TmainFrm.maxIPsDLing1Click(Sender: TObject);
@@ -8832,15 +8969,16 @@ end;
 procedure TmainFrm.SwitchON1Click(Sender: TObject);
 begin toggleServer(fileSrv) end;
 
-procedure TmainFrm.Switchtorealfolder1Click(Sender: TObject);
+procedure TmainFrm.SwitchToRealFolder1Click(Sender: TObject);
 var
   i: integer;
   someLocked: boolean;
   list: TFileNodeDynArray;
 begin
-if selectedFile = NIL then exit;
-someLocked:=FALSE;
-list:=copySelection();
+  if selectedFile = NIL then
+    exit;
+  someLocked := FALSE;
+  list := copySelection();
 for i:=0 to length(list)-1 do
   if assigned(list[i]) then
     with nodeTofile(list[i]) do
@@ -8923,7 +9061,10 @@ begin
 end;
 
 procedure TmainFrm.useISOdateChkClick(Sender: TObject);
-begin applyISOdateFormat() end;
+begin
+  onLogPrefsChange(Sender);
+  applyISOdateFormat();
+end;
 
 procedure TmainFrm.RunHFSwhenWindowsstarts1Click(Sender: TObject);
 begin
@@ -8945,10 +9086,10 @@ end;
 
 procedure TmainFrm.minimizeToTray();
 begin
-application.Minimize();
-addTray();
-showWindow(application.handle, SW_HIDE); // hide taskbar button
-trayed:=TRUE;
+  application.Minimize();
+  addTray();
+  showWindow(application.handle, SW_HIDE); // hide taskbar button
+  trayed := TRUE;
 end; // minimizeToTray
 
 procedure TmainFrm.askFolderKindChkClick(Sender: TObject);
@@ -9012,7 +9153,7 @@ end; // acceptOnMenuclick
 
 procedure TmainFrm.filesBoxEndDrag(Sender, Target: TObject; X, Y: Integer);
 begin
-  scrollFilesBox:=-1;
+  scrollFilesBox := -1;
   filesBox.Refresh();
 end;
 
@@ -9224,6 +9365,9 @@ constructor TConnDataGui.Create;
 begin
   tray := NIL;
   tray_ico := NIL;
+ {$IFDEF SHOW_GEO_BY_IP}
+  countryNum := 0;
+ {$ENDIF SHOW_GEO_BY_IP}
 end;
 
 destructor TConnDataGui.Destroy;
@@ -9233,6 +9377,90 @@ begin
   if Assigned(tray_ico) then
     FreeAndNil(tray_ico);
 end;
+
+procedure TConnDataGui.clear;
+begin
+  tray := NIL;
+  tray_ico := NIL;
+ {$IFDEF SHOW_GEO_BY_IP}
+  countryNum := 0;
+ {$ENDIF SHOW_GEO_BY_IP}
+end;
+
+procedure TConnDataGui.init(hndl: HWND; data: TconnDataMain; downloadTrayEvent: TTrayEventHandle);
+begin
+//  with TConnDataGui(Self.guiData) do
+    begin
+      tray := TmyTrayicon.create(hndl);
+      tray.UsrData := data;
+      tray_ico := Ticon.create();
+      tray.onEvent := downloadTrayEvent;
+//      countryNum := geoip.get data.address;
+    end;
+end;
+
+procedure TConnDataGui.setIcon(p: TIconParams);
+begin
+  if setTrayIcon(Self.tray_ico, Self.tp, p) then
+  begin
+    tp := p;
+    tray.setIcon(tray_ico);
+  end;
+end;
+
+procedure TConnDataGui.setupDownloadIcon(data: TconnDataMain; hndl: HWND; downloadTrayEvent: TTrayEventHandle);
+var
+  tr: TmyTrayicon;
+  procedure painticon();
+  var
+    p: TIconParams;
+  begin
+    p.perc := safeDiv(0.0+data.conn.bytesSentLastItem, data.conn.bytesPartial);
+    p.str := intToStr( trunc(p.perc*100) )+'%';
+    p.isActive := mainFrm.fileSrv.httpServIsActive;
+    p.size := TRAY_ICON_SIZE;
+    Self.setIcon(p);
+    tr.setTip(
+      data.getLastRequested
+      +trayNL+format('%.1f KB/s', [data.averageSpeed/1000])
+      +trayNL+dotted(data.conn.bytesSentLastItem)+' bytes sent'
+      +trayNL+data.address
+    );
+    tr.show();
+  end; // paintIcon
+
+begin
+  if (data = NIL) or (data.conn = NIL) then
+    exit;
+  tr := Self.tray;
+
+  if assigned(tr)
+   and data.isReplyFinished then
+  begin
+    Self.Clear;
+    tr.hide();
+    freeAndNIL(tr);
+//    ti.free;
+    exit;
+  end;
+  if not data.isSendingFile then
+    exit;
+
+  if not data.countAsDownload then
+    exit;
+
+  if tr = NIL then
+    begin
+      Self.Init(hndl, data, downloadTrayEvent);
+      tr := Self.tray;
+//      ti := data.getIcon;
+    end;
+  if mainfrm.trayfordownloadChk.checked and data.isSendingFile then
+    paintIcon()
+   else
+    tr.hide();
+end; // setupDownloadIcon
+
 
 {
 constructor TConnDataHlp.createWithGui(conn: ThttpConn);
@@ -9257,9 +9485,11 @@ end;
 
 procedure TConnDataHlp.setIcoParams(p: TIconParams);
 begin
-  TConnDataGui(Self.guiData).tp := p;
+  if Assigned(Self.guiData) then
+    TConnDataGui(Self.guiData).tp := p;
 end;
 
+{
 procedure TConnDataHlp.setIcon(p: TIconParams);
 begin
   if setTrayIcon(TConnDataGui(Self.guiData).tray_ico, TConnDataGui(Self.guiData).tp, p) then
@@ -9268,23 +9498,18 @@ begin
     TConnDataGui(Self.guiData).tray.setIcon(TConnDataGui(Self.guiData).tray_ico);
   end;
 end;
-
+}
 
 procedure TConnDataHlp.clearGuiData;
 begin
-  TConnDataGui(Self.guiData).tray := NIL;
-  TConnDataGui(Self.guiData).tray_ico := NIL;
+  if Assigned(Self.guiData) then
+    TConnDataGui(Self.guiData).Clear;
 end;
 
-procedure TConnDataHlp.initGUIData;
+procedure TConnDataHlp.initGUIData(hndl: THandle; onEvent: TTrayEventHandle);
 begin
-  with TConnDataGui(Self.guiData) do
-    begin
-      tray := TmyTrayicon.create(mainfrm.handle);
-      tray.UsrData := self;
-      tray_ico := Ticon.create();
-      tray.onEvent := mainfrm.downloadTrayEvent;
-    end;
+  if Assigned(Self.guiData) then
+    TConnDataGui(Self.guiData).init(hndl, Self, onEvent)
 end;
 
 var

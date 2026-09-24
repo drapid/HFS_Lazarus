@@ -1,4 +1,4 @@
-﻿<html>
+﻿<html selectable>
 <head>
 <style>
   /* ===== Light (main) ===== */
@@ -46,6 +46,27 @@
     var(cont):      #0055aa;
     var(selection): #cce0ff;
   }
+
+html, body, #log {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.log-msg,
+.log-title,
+.time,
+.addr,
+.msg,
+.cont,
+.cont-wrap,
+pre.cont {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.spoiler-btn {
+  user-select: none;
+  -webkit-user-select: none;
+}
 
   html, body {
     margin: 0;
@@ -102,7 +123,7 @@
 
 .spoiler-btn:hover { opacity: 1; }
 
-  .log-msg { margin: 0 0 1px 0; line-height: 1.25; }
+  .log-msg { user-select: text; margin: 0 0 1px 0; line-height: 1.25; }
   .time    { color: var(time); font-weight: bold; }
   .addr    { color: var(addr); }
   .msg     { color: var(msg); }

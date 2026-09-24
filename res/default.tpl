@@ -2431,7 +2431,180 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
+function archiveContent() {
+  document.querySelectorAll("a[href].archive-spoiler").forEach(function(t, e) {
+    t.addEventListener("click", function(e) {
+      e.preventDefault();
+      
+      const linkItem = t.parentElement;
+      const ul = linkItem.parentElement;
+      let itemsCount = 0;
+      
+      if (ul.hasAttribute("archive-items-count")) {
+        var menuItems = ul.getElementsByClassName("archive-items");
+        if (menuItems.length > 0) {
+          let menuItem = menuItems[0];
+          if (menuItem.hasAttribute("expanded")) {
+            menuItem.removeAttribute("expanded");
+            menuItem.setAttribute("collapsed", "");
+          } else {
+            menuItem.setAttribute('expanded', "");
+            menuItem.removeAttribute("collapsed");
+          }
+        }
+      } else {
+        const urlItem = linkItem.children[0];
+        if (urlItem) {
+          const url = new URL(urlItem.getAttribute("href") + '?mode=list', urlItem.baseURI);
 
+          fetch(url.href, {
+            headers: {
+              'Accept': 'application/json'
+            }
+          })
+          .then((response) => {
+            if (response.ok) {
+              return response.json();
+            } else {
+              let menuItem = document.createElement('menu');
+              menuItem.setAttribute('class', 'archive-items');
+              menuItem.setAttribute('expanded', "");
+              menuItem.removeAttribute("collapsed");
+
+              let li = document.createElement('div');
+              li.setAttribute('class', 'archive-list-item');
+              li.setAttribute('data-entry-index', 0);
+
+              let dil = document.createElement('div');
+              dil.setAttribute('class', 'item-link');
+              let name = document.createElement('p');
+              name.setAttribute('class', 'archive-item-link');
+              name.innerHTML = response.statusText;
+
+              dil.appendChild(name);
+
+              let clr = document.createElement('div');
+              clr.setAttribute('class', 'clearer');
+
+              li.appendChild(dil);
+              li.appendChild(clr);
+              menuItem.appendChild(li);
+
+              ul.appendChild(menuItem);
+              ul.setAttribute("archive-items-count", '?');
+
+              throw new Error(response.status);
+            }
+          })
+          .then((data) => {
+            let items = data.archive.entries;
+            itemsCount = data.archive.totalEntryCount;
+            
+            // --- Paging (Tabs) ---
+            const itemsPerPage = 30;
+            const totalPages = Math.ceil(items.length / itemsPerPage);
+
+            //  (div instead of menu, as shoud contain buttons and lists)
+            let mainContainer = document.createElement('div');
+            mainContainer.setAttribute('class', 'archive-items archive-paginated-container');
+            mainContainer.setAttribute('expanded', "");
+            mainContainer.removeAttribute("collapsed");
+
+            let tabsContainer = document.createElement('div');
+            tabsContainer.setAttribute('class', 'archive-tabs-nav');
+
+            let pageMenus = [];
+            let tabButtons = [];
+
+            for (let p = 0; p < totalPages; p++) {
+              
+              // 1. Button for current tab
+              let btn = document.createElement('button');
+              btn.textContent = p + 1;
+              btn.setAttribute('class', 'archive-tab-btn');
+              
+              // 2. Создаем контейнер-список для текущей порции записей
+              let pageMenu = document.createElement('menu');
+              pageMenu.setAttribute('class', 'archive-page-menu');
+
+              // Если это первая страница, сразу делаем её и её кнопку активными
+              if (p === 0) {
+                btn.classList.add('active');
+                pageMenu.classList.add('active');
+              }
+
+              // 3. Вырезаем кусок массива ровно в 30 элементов
+              let pageItems = items.slice(p * itemsPerPage, (p + 1) * itemsPerPage);
+              
+              // 4. Отрисовываем элементы только для этой вкладки
+              pageItems.forEach(function(archiveItem) {
+                let li = document.createElement('div');
+                li.setAttribute('class', 'archive-list-item');
+                li.setAttribute('data-entry-index', archiveItem.entryIndex);
+
+                let dil = document.createElement('div');
+                dil.setAttribute('class', 'item-link');
+                let name = document.createElement('a');
+                name.setAttribute('class', 'archive-item-link');
+                name.innerHTML = archiveItem.name;
+
+                let dsz = document.createElement('div');
+                dsz.setAttribute('class', 'item-props');
+                if (archiveItem.type == "file") {
+                  let sz = document.createElement('span');
+                  sz.setAttribute('class', 'item-size');
+                  sz.innerHTML = formatBytes(archiveItem.size); 
+                  dsz.appendChild(sz);
+                }
+
+                let clr = document.createElement('div');
+                clr.setAttribute('class', 'clearer');
+
+                dil.appendChild(name);
+                li.appendChild(dil);
+                li.appendChild(dsz);
+                li.appendChild(clr);
+                
+                pageMenu.appendChild(li);
+              });
+
+              // Логика переключения при клике на закладку
+              btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation(); 
+                
+                // 1. Убираем класс 'active' абсолютно у всех кнопок и списков
+                pageMenus.forEach(menu => menu.classList.remove('active'));
+                tabButtons.forEach(button => button.classList.remove('active'));
+
+                // 2. Добавляем класс 'active' только нажатой кнопке и её списку
+                pageMenu.classList.add('active');
+                btn.classList.add('active');
+              });
+
+              pageMenus.push(pageMenu);
+              tabButtons.push(btn);
+              
+              // Добавляем кнопку в навигацию, а список в главный контейнер
+              tabsContainer.appendChild(btn);
+              mainContainer.appendChild(pageMenu);
+            }
+
+            if (totalPages > 1) {
+              mainContainer.insertBefore(tabsContainer, mainContainer.firstChild);
+            }
+
+            ul.appendChild(mainContainer);
+            ul.setAttribute("archive-items-count", itemsCount);
+          })
+          .catch(function(error) {
+            console.log(error);
+          });
+        }
+      }
+    });
+  });
+}
 
 [sha256.js|public]
 // from https://github.com/AndersLindman/SHA256
@@ -3189,4 +3362,119 @@ $domReady(()=>{
     selectionChanged()
 })//$domReady
 
+function archiveContent(){
+  document.querySelectorAll("a[href].archive-spoiler").forEach(function(t,e){
+     var n;
+     t.addEventListener("click", function(e){
+        e.preventDefault() //,i(t.getAttribute("href"))
+  const linkItem = t.parentElement;
+  const ul = linkItem.parentElement;
+  let itemsCount = 0
+  if (ul.hasAttribute("archive-items-count")) {
+    var menuItems = ul.getElementsByClassName("archive-items")
+    if (menuItems.length > 0) {
+     menuItem = menuItems[0]
+     if (menuItem.hasAttribute("expanded")){
+       menuItem.removeAttribute("expanded")
+       menuItem.setAttribute("collapsed", "")
+      } else {
+       menuItem.setAttribute('expanded', "");
+       menuItem.removeAttribute("collapsed");	
+      } 
+    }
+   } else {
+  const urlItem = linkItem.children[0];
+  if (urlItem){
+    const url = new URL(urlItem.getAttribute("href") + '?mode=list', urlItem.baseURI);
 
+  fetch(url.href, {
+        headers: {
+         'Accept': 'application/json'
+        }
+      })
+    .then((response) => {
+      if(response.ok)
+      {
+        return response.json();
+       }
+       else
+       {
+        let menuItem = document.createElement('menu');
+        menuItem.setAttribute('class', 'archive-items');
+        menuItem.setAttribute('expanded', "");
+        menuItem.removeAttribute("collapsed");
+
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', 0);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('p');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = response.statusText;
+
+        dil.appendChild(name);
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        li.appendChild(dil);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+
+        ul.appendChild(menuItem);
+        ul.setAttribute("archive-items-count", '?');
+
+        throw new Error(response.status);
+        }
+    })
+    .then((data) => {
+      let items = data.archive.entries;
+      itemsCount = data.archive.totalEntryCount;
+      let menuItem = document.createElement('menu');
+      menuItem.setAttribute('class', 'archive-items');
+      menuItem.setAttribute('expanded', "");
+      menuItem.removeAttribute("collapsed");
+
+      items.map(function(archiveItem) {
+        let li = document.createElement('div');
+        li.setAttribute('class', 'archive-list-item');
+        li.setAttribute('data-entry-index', archiveItem.entryIndex);
+
+        let dil = document.createElement('div');
+        dil.setAttribute('class', 'item-link');
+        let name = document.createElement('a');
+        name.setAttribute('class', 'archive-item-link');
+        name.innerHTML = archiveItem.name;
+
+        let dsz = document.createElement('div');
+        dsz.setAttribute('class', 'item-props');
+        if (archiveItem.type == "file"){
+          let sz = document.createElement('span');
+          sz.setAttribute('class', 'item-size');
+          sz.innerHTML = formatBytes(archiveItem.size);
+          dsz.appendChild(sz);
+         }
+
+        let clr = document.createElement('div');
+        clr.setAttribute('class', 'clearer');
+
+        dil.appendChild(name);
+
+        li.appendChild(dil);
+        li.appendChild(dsz);
+        li.appendChild(clr);
+        menuItem.appendChild(li);
+      });
+     ul.appendChild(menuItem);
+     ul.setAttribute("archive-items-count", itemsCount);
+    })
+    .catch(function(error) {
+      console.log(error);
+    });
+   }
+    }
+       })
+    })
+}

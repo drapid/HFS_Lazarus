@@ -69,12 +69,7 @@ uses
   AnsiStrings,
 //  AnsiClasses,
 {$ENDIF UNICODE}
- {$IFDEF FMX}
-//  FMX.Graphics, System.UITypes, FMX.Types,
-  ICS.FMX.OverbyteIcsWSocket,
- {$ELSE ~FMX}
   OverbyteIcsWSocket,
- {$ENDIF FMX}
   RDUtils,
   srvConst;
 
@@ -105,7 +100,7 @@ begin
   stringToWideChar(c,@result,4)
 end;
 
-function isLocalIP(const ip:string):boolean;
+function isLocalIP(const ip: String): Boolean;
 var
   r: record d,c,b,a:byte end;
 begin

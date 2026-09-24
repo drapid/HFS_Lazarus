@@ -28,6 +28,7 @@ Now it can be build with full unicode support and in X64.
 - [ICS for Lazarus](https://github.com/drapid/ICS_Lazarus) v9 by François PIETTE
 - [For.RnQ](https://github.com/drapid/rnq/tree/master/for.RnQ)
 - [Synopse mORMot2](https://github.com/synopse/mORMot2)
+- [Sciter dll](https://sciter.com) v5 is working
 
 ## Components for Lazarus:
 - RichMemo

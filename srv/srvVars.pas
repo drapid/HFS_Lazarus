@@ -18,6 +18,7 @@ var
   autoupdatedFiles: TstringToIntHash;   // download counter for temp Tfile.s
   updateASAP: string;
   iconsCache: TiconsCache;
+  iconMasks: TstringIntPairs;
   filesStayFlaggedForMinutes: integer;
   autoFingerprint: integer;    // create fingerprint on file addition
   toAddFingerPrint: TStringList;
@@ -74,6 +75,7 @@ var
   GMToffset: integer; // in minutes
   externalIP: string;
   useIPv6: Boolean;
+  srvPreferences: THashedStringList; // from cLoadPrefs, cShowPrefs and cLogPrefs
 
 var
   onlyDotsRE: TRegExpr;
@@ -96,14 +98,14 @@ var
   staticVars: THashedStringList; // these scripting variables are held for the whole run-time
   eventScripts: Ttpl;
 
-  function applyThumbsExtStr(str: String): Boolean;
+  function applyThumbsExtStr(const str: String): Boolean;
   function objByIP(srv: ThttpSrv; const ip: String): TperIp;
 
 implementation
   uses
     SysUtils, srvUtils;
 
-function applyThumbsExtStr(str: String): Boolean;
+function applyThumbsExtStr(const str: String): Boolean;
 var
   arr: TStringDynArray;
   i: Integer;
@@ -141,7 +143,7 @@ end; // objByIP
 INITIALIZATION
 
 MIMEtypes := toSA([
-	'*.htm;*.html', 'text/html',
+  '*.htm;*.html', 'text/html',
   '*.jpg;*.jpeg;*.jpe', 'image/jpeg',
   '*.gif', 'image/gif',
   '*.png', 'image/png',
@@ -159,7 +161,7 @@ MIMEtypes := toSA([
   '*.webp', 'image/webp'
 ]);
 
-  applyThumbsExtStr(thumbsShowToExtDefaultStr);
+  applyThumbsExtStr(cSrvPrefs[TSrvPrefsVal.thumbedTypes].pDefault);
 
   globalLimiter := TspeedLimiter.create();
   iconsCache := TiconsCache.create();

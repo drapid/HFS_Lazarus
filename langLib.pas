@@ -43,17 +43,12 @@ implementation
 
 uses
   utilLib,
- {$IFDEF FMX}
-  SyncObjs,
-  FMX.stdctrls, FMX.ExtCtrls, FMX.menus, FMX.controls,
- {$ELSE ~FMX}
   ComCtrls,
   {$IFDEF USE_VTV}
   VirtualTrees.DrawTree,
   {$ELSE ~USE_VTV}
   {$ENDIF ~USE_VTV}
   stdctrls, ExtCtrls, menus, controls,
- {$ENDIF FMX}
 //  RQUtil,
   RDGlobal,
   Types, sysUtils, strUtils;

@@ -222,8 +222,8 @@ type
     function  getBytesToSend(): Int64;
     function  getBytesToPost(): Int64;
     function  getBytesGot(): Int64;
-    procedure notify(ev:ThttpEvent);
-    procedure tryNotify(ev:ThttpEvent);
+    procedure notify(ev: ThttpEvent);
+    procedure tryNotify(ev: ThttpEvent);
     procedure calculateSpeed();
     procedure sendheader(const h: String); OverLoad;
     procedure sendheader(const h: RawByteString=''); OverLoad;
@@ -297,6 +297,8 @@ type
    end;
 
   ThttpSrv = class
+  private
+    class function getLibs: String; static;
   protected
     timer: Ttimer;
     lockTimerevent: boolean;
@@ -362,6 +364,7 @@ type
     procedure stop();
     procedure disconnectAll(wait: Boolean=FALSE);
     procedure freeConnList(l: TObjectList);
+    class property libs: String read getLibs;
    end;
 
 const
@@ -541,6 +544,14 @@ begin
 end;
 
 /////// SERVER
+
+class function ThttpSrv.getLibs: String;
+begin
+  Result := OverbyteIcsWSocket.CopyRight;
+ {$IFDEF USE_SSL}
+  Result := Result + CrLf + 'SSL: ' + GSSLEAY_DLL_FileVersion + ' in ' + GLIBEAY_DLL_FileName;
+ {$ENDIF USE_SSL}
+end;
 
 function ThttpSrv.start(const onAddress: String='*'): Boolean;
 begin

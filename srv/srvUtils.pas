@@ -257,6 +257,8 @@ type
 
   function  getAgentID(conn: ThttpConn): String; overload;
   procedure drawGraphOn(cnv: Tcanvas; colors: TIntegerDynArray=NIL);
+  /// SVG bandwidth graph (in=yellow, out=fuchsia). Scales without pixel stretch.
+  function  graphToSvg(w, h: Integer): RawByteString;
   function  recalculateGraph(s: ThttpSrv): Boolean;
   procedure resetGraph(s: ThttpSrv);
 
@@ -289,7 +291,9 @@ type
     function append(const s: RawByteString): Integer;
     property Length: Integer read n;
   end;
-
+ {$IFNDEF FPC}
+  SizeUInt = Integer;
+ {$ENDIF FPC}
   TFastUStringAppend2 = class
     const incStep: Integer = 20000;
    protected
@@ -330,11 +334,7 @@ const
 implementation
 uses
   math, SysUtils, strutils, iniFiles, DateUtils,
-  {$IFDEF FMX}
-  ics.fmx.OverbyteIcsWSocket,
-  {$ELSE}
   OverbyteIcsWSocket,
-  {$ENDIF FMX}
  {$IFNDEF FPC}
   UIConsts,
   OverbyteIcsTypes,
@@ -2154,9 +2154,9 @@ function singleLine(const s: string): boolean;
 var
   i, l: integer;
 begin
-i:=pos(#13,s);
-l:=length(s);
-result:=(i = 0) or (i = l) or (i = l-1) and (s[l] = #10)
+  i := pos(#13,s);
+  l := length(s);
+  result := (i = 0) or (i = l) or (i = l-1) and (s[l] = #10)
 end; // singleLine
 
 // finds the end of the line
@@ -2222,13 +2222,15 @@ var
   i: integer;
 begin
   result := def;
+  if key = '' then
+    Exit;
   includeTrailingString(key, '=');
-  i := 1;
+  i := 0;
   repeat
-  i:= ipos(key, s, i);
-  if i = 0 then
-    exit; // not found
-  until (i = 1) or (s[i-1] in [#13,#10]); // ensure we are at the very beginning of the line
+    i := ipos(key, s, i+1);
+    if i = 0 then
+      exit; // not found
+  until (i <= 1) or (s[i-1] in [#13,#10]); // ensure we are at the very beginning of the line
   inc(i, length(key));
   result := substr(s,i, findEOL(s,i,FALSE));
 end; // getKeyFromString
@@ -2247,8 +2249,9 @@ begin
      setLength(key, i);
     end;
 // now key has a trailing '='. Let's find where it is.
-i:=0;
-  repeat i:= ipos(key, s, i+1);
+  i:=0;
+  repeat
+    i := ipos(key, s, i+1);
   until (i <= 1) or (s[i-1] in [#13,#10]); // we accept cases 0,1 as they are. Other cases must comply with being at start of line.
 if i = 0 then // missing, then add
   begin
@@ -3083,7 +3086,8 @@ begin
   begin
     onlyDotsRE := TRegExpr.Create;
     onlyDotsRE.modifierM:=TRUE;
-    onlyDotsRE.expression:='(^|\\)\.\.+($|\\)';
+//    onlyDotsRE.expression:='(^|\\)\.\.+($|\\)';
+    onlyDotsRE.expression:='(^|[\\/])\.\.+($|[\\/])'; // both separators: "..\" and "../" are equally dangerous
     onlyDotsRE.compile();
   end;
 
@@ -3670,6 +3674,82 @@ begin
   end;
 end; // drawGraphOn
   {$ENDIF FMX}
+
+function graphToSvg(w, h: Integer): RawByteString;
+var
+  i, maxV, sI, a, yBase: integer;
+  ptsOut, ptsIn, s, svg: string;
+  top: double;
+
+  function escXml(const t: string): string;
+  begin
+    Result := StringReplace(StringReplace(StringReplace(t, '&', '&amp;', [rfReplaceAll]),
+      '<', '&lt;', [rfReplaceAll]), '"', '&quot;', [rfReplaceAll]);
+  end;
+
+begin
+  if w < 64 then
+    w := 600;
+  if h < 48 then
+    h := 120;
+  w := min(w, graphSamplesLenth);
+  h := min(h, 2000);
+
+  maxV := max(graph.maxV, 1);
+  yBase := h - 1;
+  sI := Min(w - 1, Length(graph.samplesOut) - 1);
+  ptsOut := '';
+  ptsIn := '';
+  for i := 0 to sI do
+    begin
+      a := graph.samplesOut[i] * (h - 2) div maxV;
+      if a < 0 then a := 0;
+      if a > h - 2 then a := h - 2;
+      ptsOut := ptsOut + Format('%d,%d ', [i, yBase - a]);
+      a := graph.samplesIn[i] * (h - 2) div maxV;
+      if a < 0 then a := 0;
+      if a > h - 2 then a := h - 2;
+      ptsIn := ptsIn + Format('%d,%d ', [i, yBase - a]);
+    end;
+
+  top := (graph.maxV / 1000) * safeDiv(10.0, graph.rate);
+  s := format('Top speed: ' + MSG_SPEED_KBS + '  —  %d kbps', [top, round(top * 8)]);
+
+  svg :=
+    Format('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="100%%" height="%d" preserveAspectRatio="none">',
+      [w, h, h]) +
+    Format('<rect width="%d" height="%d" fill="#000"/>', [w, h]) +
+    '<g stroke="#000078" stroke-width="1">';
+  i := 0;
+  while i < w do
+    begin
+      svg := svg + Format('<line x1="%d" y1="0" x2="%d" y2="%d"/>', [i, i, h]);
+      inc(i, 10);
+    end;
+  i := h;
+  while i > 0 do
+    begin
+      svg := svg + Format('<line x1="0" y1="%d" x2="%d" y2="%d"/>', [i, w, i]);
+      dec(i, 10);
+    end;
+  svg := svg + '</g>';
+  if ptsOut <> '' then
+    svg := svg + Format('<polyline fill="none" stroke="#ff00ff" stroke-width="1" points="%s"/>', [trim(ptsOut)]);
+  if ptsIn <> '' then
+    svg := svg + Format('<polyline fill="none" stroke="#ffff00" stroke-width="1" points="%s"/>', [trim(ptsIn)]);
+  svg := svg + Format(
+    '<text x="%d" y="12" fill="#cccccc" font-family="Segoe UI,Arial,sans-serif" font-size="11" text-anchor="end">%s</text>',
+    [w - 8, escXml(s)]);
+  if assigned(globalLimiter) and (globalLimiter.maxSpeed < MAXINT) then
+    begin
+      s := format('Limit: ' + MSG_SPEED_KBS, [globalLimiter.maxSpeed / 1000]);
+      svg := svg + Format(
+        '<text x="%d" y="26" fill="#cccccc" font-family="Segoe UI,Arial,sans-serif" font-size="11" text-anchor="end">%s</text>',
+        [w - 8, escXml(s)]);
+    end;
+  svg := svg + '</svg>';
+  Result := UTF8Encode(svg);
+end; // graphToSvg
 
 function recalculateGraph(s: ThttpSrv): Boolean;
 var

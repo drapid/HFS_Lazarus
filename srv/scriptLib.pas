@@ -142,7 +142,6 @@ const
       if pTxt[e] <> '%' then
         continue;
       // found!
-//      s := substr(pTxt, b, e);
       s := pTxt.substr(b, e);
       if alreadyRecurredOn(s) then
         continue; // the user probably didn't meant to create an infinite loop
@@ -269,8 +268,8 @@ const
               inc(row);
               lastNL := i;
              end;
-            //if not (ch in ID2TAG_1Chars) then
-            if not CharInSet(ch, ID2TAG_1Chars) then
+            if not (ch in ID2TAG_1Chars) then
+            //if not CharInSet(ch, ID2TAG_1Chars) then
               begin
                 Inc(i);
                 Continue;
